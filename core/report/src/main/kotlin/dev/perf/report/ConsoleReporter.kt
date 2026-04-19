@@ -1,0 +1,183 @@
+package dev.perf.report
+
+import com.github.ajalt.mordant.rendering.TextColors.*
+import com.github.ajalt.mordant.rendering.TextStyles.*
+import com.github.ajalt.mordant.table.table
+import com.github.ajalt.mordant.terminal.Terminal
+import dev.perf.analysis.PerfReport
+import dev.perf.analysis.model.MemoryLeak
+import dev.perf.analysis.model.PotentialAnrHint
+import dev.perf.analysis.model.RenderingIncident
+import dev.perf.analysis.model.Severity
+import dev.perf.analysis.model.StrictModeViolation
+import dev.perf.report.source.SourceLinker
+import dev.perf.report.source.StackFrameParser
+
+/**
+ * Renders a styled summary to stdout using Mordant.
+ *
+ * Design decision: [sourceLinker] is optional — when present, resolved frames
+ * in the StrictMode detail block are rendered as OSC 8 terminal hyperlinks
+ * (clickable in iTerm2, kitty, Ghostty, WezTerm). When absent or when the
+ * terminal doesn't support hyperlinks, the frame is printed as plain text.
+ * Mordant handles the capability detection transparently.
+ *
+ * Design decision: we print nothing when there are no issues ("calm tech").
+ * The caller decides when to invoke this — the reporter does not check
+ * whether it "should" print; it always prints what it receives.
+ */
+class ConsoleReporter(
+    private val terminal: Terminal = Terminal(),
+    private val sourceLinker: SourceLinker? = null,
+) {
+
+    fun print(report: PerfReport) {
+        if (!report.hasIssues) {
+            terminal.println(green("✔ No performance issues detected."))
+            printPerfetto(report)
+            return
+        }
+
+        terminal.println()
+        terminal.println(bold("Perf Report — ${report.packageName}"))
+        terminal.println(severityLine(report.overallSeverity))
+        terminal.println()
+
+        if (report.memoryLeaks.isNotEmpty()) printLeaks(report.memoryLeaks)
+        if (report.strictModeViolations.isNotEmpty()) printStrictMode(report.strictModeViolations)
+        val anrRisk = report.potentialAnrHints.filter { it.severity != Severity.INFO }
+        if (anrRisk.isNotEmpty()) printPotentialAnr(anrRisk)
+        if (report.renderingIncident.severity != Severity.INFO) printRendering(report.renderingIncident)
+        printPerfetto(report)
+    }
+
+    private fun printPerfetto(report: PerfReport) {
+        report.perfettoTraceFile?.let { f ->
+            terminal.println()
+            terminal.println(dim("  Perfetto trace: ${f.absolutePath}  (open in https://ui.perfetto.dev)"))
+        }
+        report.perfettoMessage?.let { msg ->
+            terminal.println()
+            terminal.println(yellow("  Perfetto: $msg"))
+        }
+    }
+
+    private fun printPotentialAnr(hints: List<PotentialAnrHint>) {
+        terminal.println(bold(yellow("  Potential ANR risk (heuristics)")))
+        terminal.println(
+            terminal.render(
+                table {
+                    header { row("Severity", "Type", "Message") }
+                    body {
+                        hints.take(15).forEach { h ->
+                            row(h.severity.name, h.hintType.name, h.message.take(80))
+                        }
+                    }
+                }
+            )
+        )
+    }
+
+    // ── Sections ──────────────────────────────────────────────────────────────
+
+    private fun printLeaks(leaks: List<MemoryLeak>) {
+        terminal.println(bold(red("  Memory Leaks")))
+        terminal.println(
+            terminal.render(
+                table {
+                    header { row("Object", "Retained (KB)", "Shortest Path") }
+                    body {
+                        leaks.forEach { leak ->
+                            row(
+                                red(leak.leakingObject),
+                                red("~${leak.retainedBytes / 1024}"),
+                                leak.shortestPath.take(60).let { if (it.length == 60) "$it…" else it },
+                            )
+                        }
+                    }
+                }
+            )
+        )
+    }
+
+    private fun printStrictMode(violations: List<StrictModeViolation>) {
+        terminal.println(bold(yellow("  StrictMode Violations")))
+        terminal.println(
+            terminal.render(
+                table {
+                    header { row("Type", "Count", "Example Thread") }
+                    body {
+                        violations.groupBy { it.violationType }.forEach { (type, group) ->
+                            row(yellow(type.name), group.size.toString(), group.first().threadName)
+                        }
+                    }
+                }
+            )
+        )
+
+        // Detail block: top frame of each unique violation with an IDE link when available
+        if (sourceLinker != null) {
+            terminal.println(dim("  Top frames:"))
+            violations.distinctBy { it.stackTrace.lines().firstOrNull() }.take(5).forEach { v ->
+                printTopFrame(v)
+            }
+            terminal.println()
+        }
+    }
+
+    /**
+     * Prints the first resolvable frame of a violation as an OSC 8 hyperlink.
+     *
+     * Design decision: we print only the top resolvable frame (not the full
+     * trace) to keep the console output scannable. The full trace is in the
+     * Markdown report. If no frame resolves, we fall back to printing the raw
+     * first line — never silent.
+     */
+    private fun printTopFrame(violation: StrictModeViolation) {
+        val linker = sourceLinker ?: return
+        val frames = violation.stackTrace.lines()
+            .mapNotNull { StackFrameParser.parse(it) }
+
+        val (frame, url) = frames
+            .firstNotNullOfOrNull { f -> linker.linkFor(f)?.let { f to it } }
+            ?: run {
+                val raw = violation.stackTrace.lines().firstOrNull { it.isNotBlank() } ?: return
+                terminal.println("    ${dim(raw.trim())}")
+                return
+            }
+
+        // OSC 8 hyperlink — Mordant detects capability and falls back to plain text
+        val linked = terminal.colors.blue("${frame.className}.${frame.method}(${frame.file}:${frame.line})")
+        terminal.println("    $linked  ${dim(url)}")
+    }
+
+    private fun printRendering(incident: RenderingIncident) {
+        terminal.println(bold(incident.severity.color()("  Rendering")))
+        terminal.println(
+            terminal.render(
+                table {
+                    header { row("Metric", "Value") }
+                    body {
+                        row("Total frames", incident.totalFrames.toString())
+                        row("Janky (>16ms)", incident.jankyFrames.toString())
+                        row("Frozen (>700ms)", incident.frozenFrames.toString())
+                        row("p90", "%.2f ms".format(incident.p90Ms))
+                        row("p95", "%.2f ms".format(incident.p95Ms))
+                        row("p99", "%.2f ms".format(incident.p99Ms))
+                    }
+                }
+            )
+        )
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private fun severityLine(severity: Severity) =
+        severity.color()("  ● Overall: ${severity.name}")
+
+    private fun Severity.color() = when (this) {
+        Severity.CRITICAL -> red
+        Severity.WARNING -> yellow
+        Severity.INFO -> green
+    }
+}

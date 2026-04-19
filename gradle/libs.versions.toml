@@ -1,0 +1,29 @@
+[versions]
+kotlin = "2.1.0"
+clikt = "4.4.0"
+mordant = "2.7.2"
+shark = "2.2"
+coroutines = "1.8.1"
+kotlinx-serialization = "1.7.3"
+graalvm-native = "0.10.4"
+
+[libraries]
+clikt = { module = "com.github.ajalt.clikt:clikt", version.ref = "clikt" }
+mordant = { module = "com.github.ajalt.mordant:mordant", version.ref = "mordant" }
+mordant-coroutines = { module = "com.github.ajalt.mordant:mordant-coroutines", version.ref = "mordant" }
+
+shark-hprof = { module = "com.squareup.leakcanary:shark-hprof", version.ref = "shark" }
+shark-graph = { module = "com.squareup.leakcanary:shark-graph", version.ref = "shark" }
+shark = { module = "com.squareup.leakcanary:shark", version.ref = "shark" }
+shark-android = { module = "com.squareup.leakcanary:shark-android", version.ref = "shark" }
+
+kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
+
+kotlin-test-junit5 = { module = "org.jetbrains.kotlin:kotlin-test-junit5", version.ref = "kotlin" }
+
+[plugins]
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+graalvm-native = { id = "org.graalvm.buildtools.native", version.ref = "graalvm-native" }

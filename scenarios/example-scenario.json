@@ -1,0 +1,17 @@
+{
+  "name": "checkout-flow",
+  "durationSeconds": 60,
+  "engines": {
+    "strictMode": true,
+    "rendering": true,
+    "heap": false,
+    "anrHints": true,
+    "perfetto": false
+  },
+  "thresholds": {
+    "maxJankyPercent": 2.0,
+    "maxFrozenFrames": 0,
+    "maxStrictModeViolations": 0,
+    "maxPotentialAnrHints": 20
+  }
+}
