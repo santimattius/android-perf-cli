@@ -6,6 +6,7 @@ import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.file
 import dev.perf.cli.config.PerfConfig
 import dev.perf.cli.config.saveConfig
+import dev.perf.cli.error.runFriendly
 import dev.perf.cli.sdk.AndroidSdkInstaller
 import java.io.File
 
@@ -33,7 +34,7 @@ class SdkInstallCommand : CliktCommand(
         help = "SDK root directory (default: same as Android Studio — ~/Library/Android/sdk on macOS, etc.)",
     ).file(mustExist = false)
 
-    override fun run() {
+    override fun run() = runFriendly {
         val root = directory ?: AndroidSdkInstaller.defaultInstallRoot()
         echo("→ Installing Android SDK components under ${root.absolutePath} …")
         val sdkRoot = AndroidSdkInstaller.installMinimal(root, ::echo)

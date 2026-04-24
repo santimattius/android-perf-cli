@@ -1,6 +1,7 @@
 package dev.perf.analysis.fake
 
 import dev.perf.adb.AdbClient
+import dev.perf.adb.AdbShellResult
 import java.io.File
 
 /**
@@ -24,9 +25,16 @@ class FakeAdbClient(
     override val serial: String = "emulator-5554",
     private val shellHandler: (Array<out String>) -> String = { "" },
     private val streamLines: List<String> = emptyList(),
+    private val allowFailureHandler: ((Array<out String>) -> AdbShellResult)? = null,
 ) : AdbClient {
 
     override fun shell(vararg args: String): String = shellHandler(args)
+
+    override fun shellAllowFailure(vararg args: String): AdbShellResult {
+        allowFailureHandler?.invoke(args)?.let { return it }
+        return runCatching { AdbShellResult(0, shell(*args), "") }
+            .getOrElse { e -> AdbShellResult(1, "", e.message ?: e.javaClass.simpleName) }
+    }
 
     override fun stream(vararg args: String, onLine: (String) -> Boolean) {
         for (line in streamLines) {

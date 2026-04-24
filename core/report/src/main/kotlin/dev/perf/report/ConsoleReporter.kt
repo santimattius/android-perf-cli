@@ -10,7 +10,10 @@ import dev.perf.analysis.model.PotentialAnrHint
 import dev.perf.analysis.model.RenderingIncident
 import dev.perf.analysis.model.Severity
 import dev.perf.analysis.model.StrictModeViolation
+import dev.perf.analysis.model.ColdStartMeasurement
+import dev.perf.analysis.model.ThresholdBreach
 import dev.perf.report.source.SourceLinker
+import dev.perf.report.vitals.VitalsPlaybook
 import dev.perf.report.source.StackFrameParser
 
 /**
@@ -31,10 +34,12 @@ class ConsoleReporter(
     private val sourceLinker: SourceLinker? = null,
 ) {
 
-    fun print(report: PerfReport) {
+    fun print(report: PerfReport, extras: ReportRenderExtras = ReportRenderExtras()) {
         if (!report.hasIssues) {
             terminal.println(green("✔ No performance issues detected."))
+            report.coldStart?.let { printColdStart(it) }
             printPerfetto(report)
+            printAndroidCliHint(extras)
             return
         }
 
@@ -43,12 +48,46 @@ class ConsoleReporter(
         terminal.println(severityLine(report.overallSeverity))
         terminal.println()
 
-        if (report.memoryLeaks.isNotEmpty()) printLeaks(report.memoryLeaks)
-        if (report.strictModeViolations.isNotEmpty()) printStrictMode(report.strictModeViolations)
+        if (report.thresholdBreaches.isNotEmpty()) printThresholdBreaches(report.thresholdBreaches)
+        report.coldStart?.let { printColdStart(it) }
+        if (report.memoryLeaks.isNotEmpty()) {
+            printLeaks(report.memoryLeaks)
+            terminal.println(dim("  Vitals: ${VitalsPlaybook.VITALS_HUB}"))
+        }
+        if (report.strictModeViolations.isNotEmpty()) {
+            printStrictMode(report.strictModeViolations)
+            terminal.println(dim("  StrictMode docs: https://developer.android.com/reference/android/os/StrictMode"))
+        }
         val anrRisk = report.potentialAnrHints.filter { it.severity != Severity.INFO }
-        if (anrRisk.isNotEmpty()) printPotentialAnr(anrRisk)
-        if (report.renderingIncident.severity != Severity.INFO) printRendering(report.renderingIncident)
+        if (anrRisk.isNotEmpty()) {
+            printPotentialAnr(anrRisk)
+            terminal.println(dim("  ANRs: https://developer.android.com/topic/performance/vitals/anr"))
+        }
+        if (report.renderingIncident.severity != Severity.INFO) {
+            printRendering(report.renderingIncident)
+            terminal.println(dim("  Render vitals: https://developer.android.com/topic/performance/vitals/render"))
+        }
         printPerfetto(report)
+        printAndroidCliHint(extras)
+    }
+
+    private fun printColdStart(cs: ColdStartMeasurement) {
+        terminal.println(bold("  Cold start"))
+        terminal.println(
+            dim(
+                "    ${cs.message}  (${cs.severity.name})  " +
+                    "Launch: https://developer.android.com/topic/performance/vitals/launch-time",
+            ),
+        )
+        terminal.println()
+    }
+
+    private fun printAndroidCliHint(extras: ReportRenderExtras) {
+        val s = extras.androidCliDocsSnippet ?: return
+        val firstUrl = Regex("https?://\\S+").find(s)?.value
+        terminal.println()
+        terminal.println(dim("  Android CLI docs search (truncated):"))
+        terminal.println(dim("    ${firstUrl ?: s.take(120)}${if (s.length > 120) "…" else ""}"))
     }
 
     private fun printPerfetto(report: PerfReport) {
@@ -60,6 +99,14 @@ class ConsoleReporter(
             terminal.println()
             terminal.println(yellow("  Perfetto: $msg"))
         }
+    }
+
+    private fun printThresholdBreaches(breaches: List<ThresholdBreach>) {
+        terminal.println(bold(red("  Threshold breaches")))
+        breaches.forEach { b ->
+            terminal.println("    ${red("✗")} ${b.message}")
+        }
+        terminal.println()
     }
 
     private fun printPotentialAnr(hints: List<PotentialAnrHint>) {

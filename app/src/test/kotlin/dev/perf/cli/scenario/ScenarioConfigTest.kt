@@ -27,6 +27,8 @@ class ScenarioConfigTest {
         assertEquals(50, config.thresholds.maxPotentialAnrHints)
         assertTrue(config.engines.anrHints)
         assertFalse(config.engines.perfetto)
+        assertFalse(config.engines.startup)
+        assertEquals(null, config.thresholds.maxColdStartMs)
     }
 
     // ── Full scenario ─────────────────────────────────────────────────────────
@@ -57,6 +59,22 @@ class ScenarioConfigTest {
         assertEquals(60, config.durationSeconds)
         assertTrue(config.engines.heap)
         assertEquals(2.0, config.thresholds.maxJankyPercent)
+    }
+
+    @Test
+    fun `loads startup engine and cold start threshold`() {
+        val file = scenarioFile(
+            """
+            {
+              "name": "ci-startup",
+              "engines": { "startup": true },
+              "thresholds": { "maxColdStartMs": 2500 }
+            }
+            """.trimIndent(),
+        )
+        val config = loadScenario(file)
+        assertTrue(config.engines.startup)
+        assertEquals(2500, config.thresholds.maxColdStartMs)
     }
 
     @Test

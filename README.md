@@ -68,7 +68,7 @@ Output includes a **`report.md`** in the current directory by default (`-o` to c
 | `perf sdk install` | Same SDK bootstrap as above, focused on `adb`. |
 | `perf run` | Monitor the app, collect metrics, write the report. |
 
-Use `perf run --help` for flags such as `--scenario`, `--heap`, `--serial`, `--apk`, `--output`, `--project-dir`, `--perfetto`, `--skip-emulator`, and `--emulator-headless`.
+Use `perf run --help` for flags such as `--scenario`, `--heap`, `--serial`, `--apk`, `--output`, `--project-dir`, `--perfetto`, `--startup`, `--activity`, `--skip-android-docs`, `--skip-emulator`, and `--emulator-headless`.
 
 ---
 

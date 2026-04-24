@@ -1,13 +1,16 @@
 package dev.perf.report
 
 import dev.perf.analysis.PerfReport
+import dev.perf.analysis.model.ColdStartMeasurement
 import dev.perf.analysis.model.MemoryLeak
 import dev.perf.analysis.model.PotentialAnrHint
 import dev.perf.analysis.model.RenderingIncident
 import dev.perf.analysis.model.Severity
 import dev.perf.analysis.model.StrictModeViolation
+import dev.perf.analysis.model.ThresholdBreach
 import dev.perf.report.source.SourceLinker
 import dev.perf.report.source.StackFrameParser
+import dev.perf.report.vitals.VitalsPlaybook
 import java.io.File
 import java.time.Instant
 import java.time.ZoneId
@@ -28,15 +31,16 @@ import java.time.format.DateTimeFormatter
  */
 class MarkdownReporter(private val sourceLinker: SourceLinker? = null) {
 
-    fun write(report: PerfReport, destination: File) {
-        destination.writeText(render(report))
+    fun write(report: PerfReport, destination: File, extras: ReportRenderExtras = ReportRenderExtras()) {
+        destination.writeText(render(report, extras))
     }
 
-    fun render(report: PerfReport): String = buildString {
+    fun render(report: PerfReport, extras: ReportRenderExtras = ReportRenderExtras()): String = buildString {
         appendHeader(report)
 
         if (!report.hasIssues) {
             appendLine("> No performance issues detected. Ship it.")
+            report.coldStart?.let { appendColdStartSummary(it) }
             report.perfettoTraceFile?.let {
                 appendLine()
                 appendLine("### Perfetto trace")
@@ -47,16 +51,84 @@ class MarkdownReporter(private val sourceLinker: SourceLinker? = null) {
                 appendLine()
                 appendLine("> Perfetto: $msg")
             }
+            appendAndroidCliSection(extras)
             return@buildString
         }
 
-        if (report.memoryLeaks.isNotEmpty()) appendLeaks(report.memoryLeaks)
-        if (report.strictModeViolations.isNotEmpty()) appendStrictMode(report.strictModeViolations)
-        if (report.potentialAnrHints.any { it.severity != Severity.INFO }) {
-            appendPotentialAnr(report.potentialAnrHints.filter { it.severity != Severity.INFO })
+        if (report.thresholdBreaches.isNotEmpty()) appendThresholdBreaches(report.thresholdBreaches)
+        report.coldStart?.let { appendColdStartSection(it) }
+        if (report.memoryLeaks.isNotEmpty()) {
+            appendLeaks(report.memoryLeaks)
+            VitalsPlaybook.memoryLeaksSection().forEach { appendLine(it) }
         }
-        if (report.renderingIncident.severity != Severity.INFO) appendRendering(report.renderingIncident)
+        if (report.strictModeViolations.isNotEmpty()) {
+            appendStrictMode(report.strictModeViolations)
+            VitalsPlaybook.strictModeSection(
+                report.strictModeViolations.map { it.violationType }.toSet(),
+            ).forEach { appendLine(it) }
+        }
+        if (report.potentialAnrHints.any { it.severity != Severity.INFO }) {
+            val filtered = report.potentialAnrHints.filter { it.severity != Severity.INFO }
+            appendPotentialAnr(filtered)
+            VitalsPlaybook.potentialAnrSection(filtered.map { it.hintType }.toSet()).forEach { appendLine(it) }
+        }
+        if (report.renderingIncident.severity != Severity.INFO) {
+            appendRendering(report.renderingIncident)
+            VitalsPlaybook.renderingSection().forEach { appendLine(it) }
+        }
         appendPerfettoFooter(report)
+        appendAndroidCliSection(extras)
+    }
+
+    private fun StringBuilder.appendColdStartSummary(cs: ColdStartMeasurement) {
+        appendLine()
+        appendLine("### Cold start (measured)")
+        appendLine()
+        appendLine("| Field | Value |")
+        appendLine("|-------|-------|")
+        appendLine("| TotalTime | ${cs.totalTimeMs?.toString() ?: "—"} ms |")
+        appendLine("| Status | ${cs.status ?: "—"} |")
+        appendLine("| Parsed | ${if (cs.parsedOk) "yes" else "no"} |")
+        appendLine()
+        appendLine("_${cs.message}_")
+        appendLine()
+        VitalsPlaybook.coldStartSection().forEach { appendLine(it) }
+    }
+
+    private fun StringBuilder.appendColdStartSection(cs: ColdStartMeasurement) {
+        appendLine("## Cold start")
+        appendLine()
+        appendLine("| Field | Value |")
+        appendLine("|-------|-------|")
+        appendLine("| Severity | ${cs.severity.badge()} |")
+        appendLine("| TotalTime | ${cs.totalTimeMs?.toString() ?: "—"} ms |")
+        appendLine("| WaitTime | ${cs.waitTimeMs?.toString() ?: "—"} ms |")
+        appendLine("| LaunchState | ${cs.launchState ?: "—"} |")
+        appendLine("| Status | ${cs.status ?: "—"} |")
+        appendLine()
+        appendLine(cs.message)
+        appendLine()
+        VitalsPlaybook.coldStartSection().forEach { appendLine(it) }
+    }
+
+    private fun StringBuilder.appendAndroidCliSection(extras: ReportRenderExtras) {
+        val snippet = extras.androidCliDocsSnippet ?: return
+        VitalsPlaybook.androidCliDocsIntro().forEach { appendLine(it) }
+        appendLine("```text")
+        appendLine(snippet)
+        appendLine("```")
+        appendLine()
+    }
+
+    private fun StringBuilder.appendThresholdBreaches(breaches: List<ThresholdBreach>) {
+        appendLine("## Threshold breaches")
+        appendLine()
+        appendLine("_Scenario SLOs exceeded — this run is a failure (exit code `1`)._")
+        appendLine()
+        breaches.forEach { b ->
+            appendLine("- **${b.severity.badge()}** ${b.message}")
+        }
+        appendLine()
     }
 
     private fun StringBuilder.appendPerfettoFooter(report: PerfReport) {
@@ -111,6 +183,10 @@ class MarkdownReporter(private val sourceLinker: SourceLinker? = null) {
         appendLine("| Package | `${report.packageName}` |")
         appendLine("| Date | $timestamp |")
         appendLine("| Overall Severity | ${report.overallSeverity.badge()} |")
+        report.coldStart?.let { cs ->
+            val t = cs.totalTimeMs?.let { "$it ms" } ?: "—"
+            appendLine("| Cold start (TotalTime) | $t |")
+        }
         appendLine()
     }
 

@@ -14,10 +14,9 @@ private val json = Json { ignoreUnknownKeys = true; prettyPrint = false }
  * A flag-based API would require rebuilding command strings; a JSON file is
  * committable, diffable, and shareable across team members.
  *
- * Design decision: all engine flags default to true. Opt-out is more useful
- * than opt-in — a scenario file without explicit keys runs everything, which
- * is safe. This avoids CI jobs silently skipping engines because a flag was
- * forgotten.
+ * Design decision: most engine flags default to true. **heap**, **perfetto**,
+ * and **startup** default to false (heavy / disruptive). Opt-out remains the
+ * default for strictMode, rendering, and anrHints.
  *
  * Example scenario file:
  * ```json
@@ -29,13 +28,15 @@ private val json = Json { ignoreUnknownKeys = true; prettyPrint = false }
  *     "rendering": true,
  *     "heap": false,
  *     "anrHints": true,
- *     "perfetto": false
+ *     "perfetto": false,
+ *     "startup": false
  *   },
  *   "thresholds": {
  *     "maxJankyPercent": 2.0,
  *     "maxFrozenFrames": 0,
  *     "maxStrictModeViolations": 0,
- *     "maxPotentialAnrHints": 20
+ *     "maxPotentialAnrHints": 20,
+ *     "maxColdStartMs": 3000
  *   }
  * }
  * ```
@@ -55,6 +56,11 @@ data class EngineConfig(
     val heap: Boolean = false,
     val anrHints: Boolean = true,
     val perfetto: Boolean = false,
+    /**
+     * When true, measures cold start (`am force-stop` + `am start -W`) once at
+     * the beginning of the run (before the timed monitoring session).
+     */
+    val startup: Boolean = false,
 )
 
 /**
@@ -72,6 +78,11 @@ data class ThresholdConfig(
     val maxStrictModeViolations: Int = 0,
     /** Counts heuristic ANR hints with severity WARNING or higher. */
     val maxPotentialAnrHints: Int = 50,
+    /**
+     * When non-null and [EngineConfig.startup] produced timings, fails the run
+     * if cold-start `TotalTime` exceeds this value (milliseconds).
+     */
+    val maxColdStartMs: Int? = null,
 )
 
 fun loadScenario(file: File): ScenarioConfig =

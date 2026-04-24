@@ -25,20 +25,48 @@ Verify the SHA256 against `checksums-sha256.txt` from the release.
 
 ---
 
-## 2. Homebrew (sample formula)
+## 2. Homebrew (auto-bumped on every tag, no extra repo)
 
-[`packaging/homebrew/perf-cli.rb`](packaging/homebrew/perf-cli.rb) contains a template. Before publishing:
+The release workflow keeps the formula at [`Formula/android-perf-cli.rb`](Formula/android-perf-cli.rb) **inside this same repository**. On every `v*` tag the workflow:
 
-- Replace `YOUR_GITHUB_ORG` with the real org or user.
-- Update `url`, `version`, and `sha256` (copy the hash from the release).
+1. Builds the JAR and publishes the GitHub Release.
+2. Re-renders `Formula/android-perf-cli.rb` with the new `url`, `version`, and `sha256`.
+3. Commits and pushes the bump to the **default branch** with the bot account `github-actions[bot]`.
 
-Local install from a clone:
+No tap repository, no PATs, no extra secrets — only `permissions: contents: write` (already set in the workflow).
+
+### User install
+
+`brew tap` accepts an explicit Git URL, so any repository with a top-level `Formula/` folder works as a tap:
 
 ```bash
-brew install --formula ./packaging/homebrew/perf-cli.rb
+brew tap OWNER/android-perf-cli https://github.com/OWNER/android-perf-cli
+brew install android-perf-cli
+perf --help
 ```
 
-For your own **tap**: copy the formula to `homebrew-tap/Formula/perf-cli.rb` and document `brew tap owner/tap`.
+The Homebrew **package** is `android-perf-cli`; the installed **binary** is `perf` (CLI entrypoint).
+
+To upgrade after a new tag:
+
+```bash
+brew update && brew upgrade android-perf-cli
+```
+
+### Branch protection note
+
+If the default branch has protection rules that **require pull requests**, the workflow's direct push will be rejected. Either:
+
+- Allow `github-actions[bot]` to bypass protection on the default branch, **or**
+- Switch the workflow to open a PR instead of pushing directly (requires a PAT with `contents: write` and `pull-requests: write`).
+
+### Local install (from a clone, without `brew tap`)
+
+```bash
+brew install --formula ./Formula/android-perf-cli.rb
+```
+
+The committed file is the source of truth — after the first release, `OWNER`, version, and sha256 are already correct.
 
 ---
 

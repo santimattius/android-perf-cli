@@ -1,6 +1,7 @@
 package dev.perf.cli.command
 
 import com.github.ajalt.clikt.core.CliktCommand
+import com.github.ajalt.clikt.core.CliktError
 import com.github.ajalt.clikt.core.ProgramResult
 import com.github.ajalt.clikt.core.terminal
 import com.github.ajalt.clikt.parameters.options.default
@@ -14,16 +15,21 @@ import dev.perf.adb.EmulatorManager
 import dev.perf.analysis.MonitorConfig
 import dev.perf.analysis.PerfWatchdog
 import dev.perf.analysis.perfetto.PerfettoCapture
+import dev.perf.analysis.perfetto.PerfettoRecordResult
+import dev.perf.analysis.startup.StartupCapture
 import dev.perf.cli.config.PerfConfig
 import dev.perf.cli.config.configExists
 import dev.perf.cli.config.loadConfig
 import dev.perf.cli.config.saveConfig
+import dev.perf.cli.error.runFriendly
 import dev.perf.cli.sdk.AndroidSdkLocator
 import dev.perf.cli.scenario.ScenarioConfig
 import dev.perf.cli.scenario.ThresholdEvaluator
+import dev.perf.cli.docs.AndroidCliDocsRunner
 import dev.perf.cli.scenario.loadScenario
 import dev.perf.report.ConsoleReporter
 import dev.perf.report.MarkdownReporter
+import dev.perf.report.ReportRenderExtras
 import dev.perf.report.source.SourceLinker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -96,8 +102,24 @@ class RunCommand : CliktCommand(
         help = "When auto-launching an AVD, use -no-window (CI-friendly).",
     ).flag(default = false)
 
-    override fun run(): Unit = runBlocking {
-        guardConfig()
+    private val activityComponent: String? by option(
+        "--activity",
+        help = "Explicit launch component for cold start (e.g. com.example/.MainActivity). Optional if startup is enabled.",
+    )
+
+    private val startupFlag: Boolean by option(
+        "--startup",
+        help = "Measure cold start once at the beginning (am force-stop + am start -W).",
+    ).flag(default = false)
+
+    private val skipAndroidDocs: Boolean by option(
+        "--skip-android-docs",
+        help = "Do not run `android docs search` on the host even if `android` is on PATH.",
+    ).flag(default = false)
+
+    override fun run(): Unit = runFriendly {
+        runBlocking {
+            guardConfig()
 
         val config = loadConfig()
         val scenarioConfig = scenario?.let { loadScenario(it) }
@@ -106,10 +128,13 @@ class RunCommand : CliktCommand(
         val effectiveHeap = scenarioConfig?.engines?.heap ?: analyzeHeap
         val engines = scenarioConfig?.engines ?: dev.perf.cli.scenario.EngineConfig()
 
+        val effectiveStartup = engines.startup || startupFlag
+
         val monitor = MonitorConfig(
             strictMode = engines.strictMode,
             anrHints = engines.anrHints,
             rendering = engines.rendering,
+            startup = effectiveStartup,
         )
 
         val effectivePerfetto = engines.perfetto || perfettoFlag
@@ -120,6 +145,7 @@ class RunCommand : CliktCommand(
 
         coroutineScope {
             val perfettoDeferred = if (effectivePerfetto) {
+                echo("→ Perfetto: recording system trace in parallel (${effectiveDuration}s)…")
                 async(Dispatchers.IO) { capturePerfettoSession(device, effectiveDuration) }
             } else {
                 null
@@ -128,6 +154,15 @@ class RunCommand : CliktCommand(
             apk?.let {
                 echo("→ Installing ${it.name}…")
                 device.install(it)
+            }
+
+            val coldStartMeasurement = if (monitor.startup) {
+                echo("→ Measuring cold start (am force-stop + am start -W)…")
+                withContext(Dispatchers.IO) {
+                    StartupCapture.measureColdStart(device, packageName, activityComponent)
+                }
+            } else {
+                null
             }
 
             val label = scenarioConfig?.name ?: "ad-hoc"
@@ -140,6 +175,9 @@ class RunCommand : CliktCommand(
 
             echo("→ Collecting results…")
             var report = watchdog.stop(effectiveHeap)
+            if (coldStartMeasurement != null) {
+                report = report.copy(coldStart = coldStartMeasurement)
+            }
 
             val perfettoOutcome = perfettoDeferred?.await()
             report = when (perfettoOutcome) {
@@ -151,19 +189,29 @@ class RunCommand : CliktCommand(
                 null -> report
             }
 
-            ConsoleReporter(terminal, linker).print(report)
-            MarkdownReporter(linker).write(report, output)
+            val breaches = scenarioConfig?.let { cfg ->
+                ThresholdEvaluator.evaluate(report, cfg.thresholds)
+            }.orEmpty()
+            if (breaches.isNotEmpty()) {
+                report = report.copy(thresholdBreaches = breaches)
+            }
+
+            val extras = ReportRenderExtras(
+                androidCliDocsSnippet = if (!skipAndroidDocs) {
+                    AndroidCliDocsRunner().searchForReport(report)
+                } else {
+                    null
+                },
+            )
+
+            ConsoleReporter(terminal, linker).print(report, extras)
+            MarkdownReporter(linker).write(report, output, extras)
             echo("→ Report saved to ${output.absolutePath}")
 
-            scenarioConfig?.let { cfg ->
-                val breaches = ThresholdEvaluator.evaluate(report, cfg.thresholds)
-                if (breaches.isNotEmpty()) {
-                    echo("")
-                    echo("Threshold breaches detected:", err = true)
-                    breaches.forEach { echo("  ✗ ${it.message}", err = true) }
-                    throw ProgramResult(1)
-                }
+            if (breaches.isNotEmpty()) {
+                throw ProgramResult(1)
             }
+        }
         }
     }
 
@@ -197,31 +245,36 @@ class RunCommand : CliktCommand(
             }
             devices = listDevices()
             if (devices.isEmpty()) {
-                error("Emulator launched but no device appears in `adb devices`.")
+                throw CliktError("Emulator launched but no device appears in `adb devices`.")
             }
         }
 
         return when {
             serial != null -> devices.firstOrNull { it.serial == serial }
-                ?: error("Device '$serial' not found. Connected: ${devices.map { it.serial }}")
+                ?: throw CliktError(
+                    "Device '$serial' not found. Connected: ${devices.map { it.serial }}",
+                )
 
             devices.size == 1 -> devices.first()
-            devices.isEmpty() -> error(
-                "No ADB devices connected. Connect a device, start an emulator, or set defaultAvd in `perf init` " +
+            devices.isEmpty() -> throw CliktError(
+                "No ADB devices connected.\n" +
+                    "Connect a device, start an emulator, or set `defaultAvd` via `perf init` " +
                     "(use --skip-emulator to avoid auto-launch).",
             )
 
-            else -> error("Multiple devices connected — specify one with --serial.")
+            else -> throw CliktError(
+                "Multiple devices connected — specify one with `--serial <device>`.",
+            )
         }
     }
 
     private suspend fun capturePerfettoSession(device: AdbDevice, durationSec: Int): PerfettoOutcome {
         val cap = PerfettoCapture(device)
-        if (!cap.isAvailable()) {
-            return PerfettoOutcome.Skipped("Perfetto CLI not found on device (use a recent system image or physical device).")
+        val remote = when (val rec = cap.recordToRemotePath(durationSec)) {
+            is PerfettoRecordResult.Ok -> rec.remotePath
+            is PerfettoRecordResult.Failed ->
+                return PerfettoOutcome.Skipped(rec.reason)
         }
-        val remote = cap.recordToRemotePath(durationSec)
-            ?: return PerfettoOutcome.Skipped("perfetto recording failed (check storage and permissions).")
         val local = File(
             System.getProperty("java.io.tmpdir"),
             "perfetto-${packageName.replace('.', '-')}-$durationSec.perfetto-trace",

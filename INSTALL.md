@@ -105,7 +105,7 @@ If any **threshold** is breached, the process exits with code **1** (CI-friendly
 |-----|---------|
 | `name` | Label for logs and reports (required). |
 | `durationSeconds` | How long to run monitoring (default **30**). |
-| `engines` | Which collectors run (all default to **true** except **heap** and **perfetto** — see below). |
+| `engines` | Which collectors run (all default to **true** except **heap**, **perfetto**, and **startup** — see below). |
 | `thresholds` | Limits; exceeding them escalates the run to a failing exit code. |
 
 **Engines** (`engines` object):
@@ -117,6 +117,7 @@ If any **threshold** is breached, the process exits with code **1** (CI-friendly
 | `heap` | `false` | Heap dump + Shark analysis at end of session. |
 | `anrHints` | `true` | Heuristic “potential ANR risk” lines from logcat (skipped frames, slow dispatch, etc.) — **not** a guarantee of ANR. |
 | `perfetto` | `false` | Record a **Perfetto** system trace for the whole session (requires `perfetto` on the device). |
+| `startup` | `false` | Once at the start: `am force-stop` + **`am start -W`** cold-start timing (see `maxColdStartMs`). |
 
 **Thresholds** (`thresholds` object):
 
@@ -126,6 +127,7 @@ If any **threshold** is breached, the process exits with code **1** (CI-friendly
 | `maxFrozenFrames` | `0` | Max frozen frames. |
 | `maxStrictModeViolations` | `0` | Max StrictMode violations. |
 | `maxPotentialAnrHints` | `50` | Max count of **WARNING**-or-higher ANR *hint* events (see `anrHints`). |
+| `maxColdStartMs` | `null` | When set and `startup` is enabled, fails if cold-start **TotalTime** exceeds this many ms. |
 
 A full example is in [scenarios/example-scenario.json](scenarios/example-scenario.json).
 
@@ -137,8 +139,13 @@ A full example is in [scenarios/example-scenario.json](scenarios/example-scenari
 | `--perfetto` | Record a Perfetto trace for the session (same idea as `engines.perfetto: true`; either enables tracing). Trace is pulled to the host; open it in [Perfetto UI](https://ui.perfetto.dev). |
 | `--skip-emulator` | Do **not** auto-start the **default AVD** from `perf init` when no device is connected. |
 | `--emulator-headless` | When an AVD is auto-launched, pass `-no-window` (useful in CI). |
+| `--startup` | Measure **cold start** once before the timed session (`am force-stop` + `am start -W`). Same as `"startup": true` in the scenario. |
+| `--activity com.pkg/.MainActivity` | Explicit component for `am start -W` when using `--startup` / scenario `startup` (optional; otherwise MAIN/LAUNCHER for the package). |
+| `--skip-android-docs` | Skip running **`android docs search`** on the host (saves time in CI). By default, if the `android` CLI is on your `PATH`, the report appends a short snippet from official doc search. |
 
 Auto-emulator: configure `defaultAvd` with `perf init` so `perf run` can start an emulator if nothing is connected (unless `--skip-emulator`).
+
+**Vitals-style guidance:** each issue section in `report.md` includes static links to **developer.android.com** (Android Vitals / performance topics). When the [Android CLI](https://developer.android.com/studio/command-line) `android` tool is available, the report can also include output from `android docs search …` (unless `--skip-android-docs`).
 
 ### Heap (Shark)
 
@@ -188,6 +195,14 @@ Sections appear when there is something to show (issues, hints, or optional capt
 
 … logcat-derived signals such as Choreographer skipped frames or slow main-thread dispatch — **indicators of risk**, not proof of an ANR.
 
+## Cold start
+
+Table with **TotalTime** / **WaitTime** from `am start -W` when the startup engine ran, plus **Guidance (Vitals: launch)** with official links.
+
+## Official docs (Android CLI)
+
+Optional fenced block with truncated output from `android docs search` when the host has the `android` CLI.
+
 ## Perfetto
 
 Path to the pulled `.perfetto-trace` file (if recording succeeded), or a short message if tracing was skipped (e.g. binary missing on device).
@@ -203,5 +218,6 @@ Path to the pulled `.perfetto-trace` file (if recording succeeded), or a short m
 | `Process not found for package` | Wrong package or app not installed: `adb shell pm list packages \| grep …` |
 | `No ADB devices` | `adb devices`; wait for boot; or set `defaultAvd` in config so `perf run` can launch an emulator (unless `--skip-emulator`). |
 | Multiple devices | `perf run … --serial emulator-5554` |
-| Perfetto skipped / missing trace | Device image must include the `perfetto` binary; physical devices and recent emulators usually work. Use `--perfetto` or `"perfetto": true` in the scenario. |
+| Perfetto skipped / missing trace | On the device run `adb shell command -v perfetto` (or `adb shell ls /system/bin/perfetto`). Use a **API 29+** system image or a physical device. If recording fails, the report now includes **stderr from `perfetto`** (often an invalid light-mode category on older images). |
 | No source links in report | Pass `--project-dir` to the app module or repo root that contains `src/`. |
+| Need full stack trace for a failing run | Set `PERF_CLI_VERBOSE=1` — friendly errors become raw Java exceptions (useful for bug reports). |

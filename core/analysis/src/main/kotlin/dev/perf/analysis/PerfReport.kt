@@ -1,10 +1,12 @@
 package dev.perf.analysis
 
+import dev.perf.analysis.model.ColdStartMeasurement
 import dev.perf.analysis.model.MemoryLeak
 import dev.perf.analysis.model.PotentialAnrHint
 import dev.perf.analysis.model.RenderingIncident
 import dev.perf.analysis.model.Severity
 import dev.perf.analysis.model.StrictModeViolation
+import dev.perf.analysis.model.ThresholdBreach
 import java.io.File
 
 data class PerfReport(
@@ -13,6 +15,14 @@ data class PerfReport(
     val renderingIncident: RenderingIncident,
     val memoryLeaks: List<MemoryLeak>,
     val potentialAnrHints: List<PotentialAnrHint> = emptyList(),
+    /** Cold start metrics when the startup engine ran; null when disabled. */
+    val coldStart: ColdStartMeasurement? = null,
+    /**
+     * Scenario thresholds that were exceeded for this run (empty if no
+     * scenario was provided or all thresholds were satisfied). Rendered as
+     * a top-level section so agents reading `report.md` can see what failed.
+     */
+    val thresholdBreaches: List<ThresholdBreach> = emptyList(),
     /** Local path after pull; open in https://ui.perfetto.dev */
     val perfettoTraceFile: File? = null,
     /** Non-null when perfetto was skipped or failed (inform user). */
@@ -23,12 +33,22 @@ data class PerfReport(
             || memoryLeaks.isNotEmpty()
             || renderingIncident.severity != Severity.INFO
             || potentialAnrHints.any { it.severity != Severity.INFO }
+            || thresholdBreaches.isNotEmpty()
+            || (coldStart?.severity?.let { it != Severity.INFO } == true)
 
+    /**
+     * Design decision: [Severity] is declared `CRITICAL, WARNING, INFO`
+     * (ordinal 0 = worst). We aggregate by picking the **minimum** ordinal —
+     * i.e. the worst severity across all signals — so a single CRITICAL
+     * leak pins the overall run to CRITICAL regardless of other INFO noise.
+     */
     val overallSeverity: Severity
         get() = sequenceOf(
-            memoryLeaks.maxOfOrNull { it.severity },
-            strictModeViolations.maxOfOrNull { it.severity },
+            memoryLeaks.minOfOrNull { it.severity },
+            strictModeViolations.minOfOrNull { it.severity },
             renderingIncident.severity,
-            potentialAnrHints.maxOfOrNull { it.severity },
-        ).filterNotNull().maxOrNull() ?: Severity.INFO
+            potentialAnrHints.minOfOrNull { it.severity },
+            coldStart?.severity,
+            thresholdBreaches.minOfOrNull { it.severity },
+        ).filterNotNull().minOrNull() ?: Severity.INFO
 }

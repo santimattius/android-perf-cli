@@ -17,6 +17,9 @@ class AdbDevice(
 
     override fun shell(vararg args: String): String = execute("shell", *args)
 
+    override fun shellAllowFailure(vararg args: String): AdbShellResult =
+        executeAllowFailure("shell", *args)
+
     override fun pull(devicePath: String, destination: File): File {
         execute("pull", devicePath, destination.absolutePath)
         return destination
@@ -62,6 +65,29 @@ class AdbDevice(
         }
 
         return stdout.trim()
+    }
+
+    private fun executeAllowFailure(vararg args: String): AdbShellResult {
+        val command = buildList {
+            add(adbPath)
+            add("-s")
+            add(serial)
+            addAll(args)
+        }
+
+        val process = ProcessBuilder(command)
+            .redirectErrorStream(false)
+            .start()
+
+        val stdout = process.inputStream.bufferedReader().readText()
+        val stderr = process.errorStream.bufferedReader().readText()
+        val exitCode = process.waitFor()
+
+        return AdbShellResult(
+            exitCode = exitCode,
+            stdout = stdout.trim(),
+            stderr = stderr.trim(),
+        )
     }
 
     /**

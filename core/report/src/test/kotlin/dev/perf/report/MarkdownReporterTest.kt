@@ -2,11 +2,15 @@ package dev.perf.report
 
 import dev.perf.analysis.PerfReport
 import dev.perf.analysis.model.MemoryLeak
+import dev.perf.analysis.model.ColdStartMeasurement
 import dev.perf.analysis.model.RenderingIncident
 import dev.perf.analysis.model.Severity
 import dev.perf.analysis.model.StrictModeViolation
 import dev.perf.analysis.model.StrictModeViolation.ViolationType
+import dev.perf.analysis.model.ThresholdBreach
+import dev.perf.report.ReportRenderExtras
 import dev.perf.report.source.SourceLinker
+import dev.perf.report.vitals.VitalsPlaybook
 import java.io.File
 import java.nio.file.Files
 import kotlin.test.Test
@@ -70,6 +74,43 @@ class MarkdownReporterTest {
     }
 
     // ── Memory Leaks ──────────────────────────────────────────────────────────
+
+    @Test
+    fun `renders vitals guidance after memory leaks section`() {
+        val output = MarkdownReporter().render(reportWith(leaks = listOf(aLeak())))
+
+        assertContains(output, "## Memory Leaks")
+        assertContains(output, "### Guidance (Vitals: memory / leaks)")
+        assertContains(output, VitalsPlaybook.VITALS_HUB)
+    }
+
+    @Test
+    fun `renders cold start summary in calm path when severity is INFO`() {
+        val cs = ColdStartMeasurement(
+            totalTimeMs = 800,
+            waitTimeMs = 800,
+            launchState = "COLD",
+            status = "ok",
+            parsedOk = true,
+            message = "Cold start TotalTime=800ms",
+            severity = Severity.INFO,
+        )
+        val output = MarkdownReporter().render(reportWith(coldStart = cs))
+
+        assertContains(output, "### Cold start (measured)")
+        assertContains(output, "800")
+        assertContains(output, "### Guidance (Vitals: launch)")
+    }
+
+    @Test
+    fun `renders android cli docs block when extras provide snippet`() {
+        val output = MarkdownReporter().render(
+            report = cleanReport(),
+            extras = ReportRenderExtras(androidCliDocsSnippet = "https://developer.android.com/foo\nMore text"),
+        )
+        assertContains(output, "## Official docs (Android CLI)")
+        assertContains(output, "https://developer.android.com/foo")
+    }
 
     @Test
     fun `renders memory leak section with class name`() {
@@ -188,6 +229,34 @@ class MarkdownReporterTest {
         assertContains(output, "55.00 ms")
     }
 
+    // ── Threshold breaches ────────────────────────────────────────────────────
+
+    @Test
+    fun `renders threshold breach section when scenario SLOs are exceeded`() {
+        val breach = ThresholdBreach("Frozen frames 1 exceeds threshold of 0")
+        val output = MarkdownReporter().render(reportWith(breaches = listOf(breach)))
+
+        assertContains(output, "## Threshold breaches")
+        assertContains(output, "Frozen frames 1 exceeds threshold of 0")
+        assertContains(output, "CRITICAL")
+    }
+
+    @Test
+    fun `threshold breach section forces CRITICAL overall severity`() {
+        val breach = ThresholdBreach("Janky frame rate 6.0% exceeds threshold of 5.0%")
+        val output = MarkdownReporter().render(reportWith(breaches = listOf(breach)))
+
+        val overallLine = output.lines().first { it.contains("Overall Severity") }
+        assertContains(overallLine, "CRITICAL")
+    }
+
+    @Test
+    fun `omits threshold breach section when there are no breaches`() {
+        val output = MarkdownReporter().render(reportWith(leaks = listOf(aLeak())))
+
+        assertFalse(output.contains("## Threshold breaches"))
+    }
+
     // ── Source Linking ────────────────────────────────────────────────────────
 
     @Test
@@ -241,11 +310,15 @@ class MarkdownReporterTest {
         violations: List<StrictModeViolation> = emptyList(),
         rendering: RenderingIncident = aRenderingIncident(Severity.INFO),
         leaks: List<MemoryLeak> = emptyList(),
+        breaches: List<ThresholdBreach> = emptyList(),
+        coldStart: ColdStartMeasurement? = null,
     ) = PerfReport(
         packageName = pkg,
         strictModeViolations = violations,
         renderingIncident = rendering,
         memoryLeaks = leaks,
+        thresholdBreaches = breaches,
+        coldStart = coldStart,
     )
 
     private fun aViolation(

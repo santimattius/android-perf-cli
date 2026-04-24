@@ -16,6 +16,13 @@ interface AdbClient {
     val serial: String
 
     fun shell(vararg args: String): String
+
+    /**
+     * Same as [shell] but never throws on non-zero exit — returns stdout/stderr
+     * and the exit code. Use for probing binaries or surfacing tool errors.
+     */
+    fun shellAllowFailure(vararg args: String): AdbShellResult
+
     fun stream(vararg args: String, onLine: (String) -> Boolean)
     fun pull(devicePath: String, destination: File): File
     fun push(source: File, devicePath: String)

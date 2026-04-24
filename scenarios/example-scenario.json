@@ -6,12 +6,14 @@
     "rendering": true,
     "heap": false,
     "anrHints": true,
-    "perfetto": false
+    "perfetto": false,
+    "startup": false
   },
   "thresholds": {
     "maxJankyPercent": 2.0,
     "maxFrozenFrames": 0,
     "maxStrictModeViolations": 0,
-    "maxPotentialAnrHints": 20
+    "maxPotentialAnrHints": 20,
+    "maxColdStartMs": 3000
   }
 }

@@ -6,8 +6,10 @@ import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.file
 import dev.perf.cli.config.PerfConfig
 import dev.perf.cli.config.saveConfig
+import dev.perf.cli.error.runFriendly
 import dev.perf.cli.sdk.AndroidSdkLocator
 import dev.perf.cli.sdk.AndroidSdkInstaller
+import com.github.ajalt.clikt.core.CliktError
 import java.io.File
 
 /**
@@ -42,7 +44,7 @@ class InitCommand : CliktCommand(
         help = "Default AVD name to use when none is specified in perf run",
     )
 
-    override fun run() {
+    override fun run() = runFriendly {
         val sdkPath = resolveSdkPath()
         val config = PerfConfig(
             androidSdkPath = sdkPath,
@@ -81,8 +83,10 @@ class InitCommand : CliktCommand(
     }
 
     private fun validateSdkPath(path: String) {
-        require(AndroidSdkLocator.hasAdb(File(path))) {
-            "adb not found at $path/platform-tools/adb — run `perf sdk install` or set a valid SDK path."
+        if (!AndroidSdkLocator.hasAdb(File(path))) {
+            throw CliktError(
+                "adb not found at $path/platform-tools/adb — run `perf sdk install` or set a valid SDK path.",
+            )
         }
     }
 }

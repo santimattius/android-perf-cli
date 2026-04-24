@@ -1,6 +1,7 @@
 package dev.perf.cli.scenario
 
 import dev.perf.analysis.PerfReport
+import dev.perf.analysis.model.ColdStartMeasurement
 import dev.perf.analysis.model.MemoryLeak
 import dev.perf.analysis.model.RenderingIncident
 import dev.perf.analysis.model.Severity
@@ -135,6 +136,45 @@ class ThresholdEvaluatorTest {
         assertTrue(breaches.all { it.severity == Severity.CRITICAL })
     }
 
+    @Test
+    fun `reports breach when cold start exceeds maxColdStartMs`() {
+        val report = reportWith(
+            coldStart = ColdStartMeasurement(
+                totalTimeMs = 3000,
+                waitTimeMs = 3000,
+                launchState = "COLD",
+                status = "ok",
+                parsedOk = true,
+                message = "ok",
+                severity = Severity.WARNING,
+            ),
+        )
+        val breaches = ThresholdEvaluator.evaluate(
+            report,
+            ThresholdConfig(maxColdStartMs = 2500),
+        )
+        assertEquals(1, breaches.size)
+        assertTrue(breaches.first().message.contains("3000"))
+        assertTrue(breaches.first().message.contains("2500"))
+    }
+
+    @Test
+    fun `does not breach cold start when threshold is null`() {
+        val report = reportWith(
+            coldStart = ColdStartMeasurement(
+                totalTimeMs = 99999,
+                waitTimeMs = null,
+                launchState = null,
+                status = null,
+                parsedOk = true,
+                message = "x",
+                severity = Severity.CRITICAL,
+            ),
+        )
+        val breaches = ThresholdEvaluator.evaluate(report, ThresholdConfig(maxColdStartMs = null))
+        assertTrue(breaches.none { it.message.contains("Cold start") })
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private fun reportWith(
@@ -142,6 +182,7 @@ class ThresholdEvaluatorTest {
         frozenFrames: Int = 0,
         totalFrames: Int = 100,
         violations: Int = 0,
+        coldStart: ColdStartMeasurement? = null,
     ) = PerfReport(
         packageName = "com.example.app",
         strictModeViolations = List(violations) {
@@ -163,5 +204,6 @@ class ThresholdEvaluatorTest {
             p99Ms = 15.0,
         ),
         memoryLeaks = emptyList(),
+        coldStart = coldStart,
     )
 }
