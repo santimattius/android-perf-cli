@@ -8,9 +8,10 @@
    git tag v0.1.0
    git push origin v0.1.0
    ```
-3. The [`.github/workflows/release.yml`](.github/workflows/release.yml) workflow builds the fat JAR and publishes a **GitHub Release** with:
+3. The [`.github/workflows/release.yml`](.github/workflows/release.yml) workflow (**Release & distribution**) builds the fat JAR, publishes a **GitHub Release** with downloadable assets, bumps the Homebrew formula, and (best-effort) attaches a **Linux GraalVM native** binary to the same release. Release assets include:
    - `perf-cli-<version>.jar`
    - `checksums-sha256.txt`
+   - `perf-<version>-linux-amd64` and `perf-<version>-linux-amd64.sha256` when the native build succeeds (the native job uses `continue-on-error: true` so a failing native image does not block the JAR or Homebrew).
 
 User install (replace `OWNER`, `REPO`, and the version):
 
@@ -22,6 +23,17 @@ echo 'alias perf="java -jar '"$(pwd)/perf-cli.jar"'"' >> ~/.zshrc
 ```
 
 Verify the SHA256 against `checksums-sha256.txt` from the release.
+
+If the release includes a **Linux native** asset (same tag workflow, when GraalVM build succeeds):
+
+```bash
+VERSION=0.1.0
+curl -fsSL -O "https://github.com/OWNER/REPO/releases/download/v${VERSION}/perf-${VERSION}-linux-amd64"
+curl -fsSL -O "https://github.com/OWNER/REPO/releases/download/v${VERSION}/perf-${VERSION}-linux-amd64.sha256"
+sha256sum -c "perf-${VERSION}-linux-amd64.sha256"
+chmod +x "perf-${VERSION}-linux-amd64"
+./perf-${VERSION}-linux-amd64 --help
+```
 
 ---
 
@@ -72,7 +84,9 @@ The committed file is the source of truth — after the first release, `OWNER`, 
 
 ## 3. GraalVM Native Image (`perf` binary)
 
-Requires a **GraalVM JDK** with the `native-image` component (or CI using [`.github/workflows/native-image.yml`](.github/workflows/native-image.yml), run manually from the Actions tab).
+**On every `v*` tag**, the same [`.github/workflows/release.yml`](.github/workflows/release.yml) runs a follow-up job that builds a Linux native image and uploads **`perf-<version>-linux-amd64`** (plus a `.sha256` file) to the GitHub Release for direct **cURL** installs. If that job fails, the JAR release and Homebrew bump still succeed.
+
+Locally you need a **GraalVM JDK** with the `native-image` component:
 
 ```bash
 ./gradlew :app:nativeCompile

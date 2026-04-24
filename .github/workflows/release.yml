@@ -1,0 +1,189 @@
+# Single entry point for distribution: push a v* tag → GitHub Release (JAR + checksums),
+# optional Linux native binary on the same release, Homebrew formula bump on default branch,
+# and job summaries with copy-paste curl URLs.
+name: Release & distribution
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      jar_name: ${{ steps.meta.outputs.jar_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Build fat JAR
+        run: ./gradlew :app:jar --no-daemon -q
+
+      - name: Compute release metadata
+        id: meta
+        working-directory: app/build/libs
+        run: |
+          set -euo pipefail
+          jar=$(ls perf-cli-*.jar | head -n1)
+          version="${GITHUB_REF_NAME#v}"
+          sha=$(sha256sum "$jar" | awk '{print $1}')
+          printf '%s  %s\n' "$sha" "$jar" > checksums-sha256.txt
+          {
+            echo "version=$version"
+            echo "sha256=$sha"
+            echo "jar_name=$jar"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            app/build/libs/perf-cli-*.jar
+            app/build/libs/checksums-sha256.txt
+          generate_release_notes: true
+
+      - name: Download URLs (job summary)
+        env:
+          REPO: ${{ github.repository }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          JAR: ${{ steps.meta.outputs.jar_name }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          base="https://github.com/${REPO}/releases/download/${TAG}"
+          {
+            echo "## Published — fat JAR (Homebrew + Java)"
+            echo ""
+            echo "**Release:** \`https://github.com/${REPO}/releases/tag/${TAG}\`"
+            echo ""
+            echo "### cURL (JAR)"
+            echo '```bash'
+            echo "curl -fsSL -o ${JAR} \\"
+            echo "  \"${base}/${JAR}\""
+            echo '```'
+            echo ""
+            echo "### cURL (checksums)"
+            echo '```bash'
+            echo "curl -fsSL -o checksums-sha256.txt \\"
+            echo "  \"${base}/checksums-sha256.txt\""
+            echo '```'
+            echo ""
+            echo "After the **native_linux** job finishes (same workflow), a Linux binary may appear on this release as \`perf-${VERSION}-linux-amd64\` plus a \`.sha256\` sidecar."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Bump Homebrew formula on default branch
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          SHA256: ${{ steps.meta.outputs.sha256 }}
+          JAR: ${{ steps.meta.outputs.jar_name }}
+          REPO: ${{ github.repository }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          git fetch origin "$DEFAULT_BRANCH"
+          git checkout "$DEFAULT_BRANCH"
+          mkdir -p Formula
+          cat > Formula/android-perf-cli.rb <<RUBY
+          class AndroidPerfCli < Formula
+            desc "Android performance monitoring CLI (leaks, StrictMode, frames, ANR hints, Perfetto)"
+            homepage "https://github.com/${REPO}"
+            url "https://github.com/${REPO}/releases/download/v${VERSION}/${JAR}"
+            version "${VERSION}"
+            sha256 "${SHA256}"
+            license "Apache-2.0"
+
+            depends_on "openjdk@17"
+
+            def install
+              libexec.install "${JAR}" => "perf-cli.jar"
+              bin.write_jar_script libexec/"perf-cli.jar", "perf"
+            end
+
+            test do
+              assert_match "perf", shell_output("#{bin}/perf --help")
+            end
+          end
+          RUBY
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/android-perf-cli.rb
+          if git diff --cached --quiet; then
+            echo "Formula already up to date."
+            exit 0
+          fi
+          git commit -m "release: perf-cli ${VERSION}"
+          git push origin "$DEFAULT_BRANCH"
+
+  native_linux:
+    needs: release
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: "17"
+          distribution: "graalvm"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          components: "native-image"
+
+      - name: Build native image
+        run: ./gradlew :app:nativeCompile --no-daemon
+
+      - name: Upload native binary to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.release.outputs.version }}
+        run: |
+          set -euo pipefail
+          bin="app/build/native/nativeCompile/perf"
+          if [[ ! -f "$bin" ]]; then
+            bin=$(find app/build/native -type f -perm -111 -name perf 2>/dev/null | head -n1 || true)
+          fi
+          if [[ -z "${bin:-}" || ! -f "$bin" ]]; then
+            echo "Could not locate native perf binary — listing app/build/native:"
+            find app/build/native -type f || true
+            exit 1
+          fi
+          asset="perf-${VERSION}-linux-amd64"
+          cp "$bin" "$asset"
+          sha256sum "$asset" > "${asset}.sha256"
+          gh release upload "$TAG" "$asset" "${asset}.sha256" --repo "$REPO" --clobber
+
+      - name: Native download hint (job summary)
+        env:
+          REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.release.outputs.version }}
+        run: |
+          asset="perf-${VERSION}-linux-amd64"
+          base="https://github.com/${REPO}/releases/download/${TAG}"
+          {
+            echo "## Native Linux binary"
+            echo ""
+            echo "### cURL"
+            echo '```bash'
+            echo "curl -fsSL -O \"${base}/${asset}\" -O \"${base}/${asset}.sha256\""
+            echo "sha256sum -c ${asset}.sha256"
+            echo "chmod +x ${asset}"
+            echo "./${asset} --help"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

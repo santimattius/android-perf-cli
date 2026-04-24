@@ -89,7 +89,7 @@ If thresholds are exceeded, the process **exits with code 1**, which CI systems 
 - **From source:** [INSTALL.md](INSTALL.md) (alias `perf`, `scripts/install-perf.sh`, troubleshooting).
 - **Releases, Homebrew template, native image:** [DISTRIBUTION.md](DISTRIBUTION.md).
 
-GitHub Actions builds and attaches **`perf-cli-<version>.jar`** plus checksums when you push a **`v*`** tag (see `.github/workflows/release.yml`).
+When you push a **`v*`** tag, [`.github/workflows/release.yml`](.github/workflows/release.yml) (**Release & distribution**) publishes a GitHub Release with the fat **`perf-cli-<version>.jar`** and checksums, bumps the in-repo Homebrew formula, and best-effort attaches a **Linux native** binary to the same release for cURL installs (see [DISTRIBUTION.md](DISTRIBUTION.md)).
 
 ---
 
