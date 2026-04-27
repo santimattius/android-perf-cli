@@ -1,9 +1,9 @@
 class AndroidPerfCli < Formula
   desc "Android performance monitoring CLI (leaks, StrictMode, frames, ANR hints, Perfetto)"
-  homepage "https://github.com/OWNER/android-perf-cli"
-  url "https://github.com/OWNER/android-perf-cli/releases/download/v0.1.0/perf-cli-0.1.0.jar"
+  homepage "https://github.com/santimattius/android-perf-cli"
+  url "https://github.com/santimattius/android-perf-cli/releases/download/v0.1.0/perf-cli-0.1.0.jar"
   version "0.1.0"
-  sha256 "REPLACE_WITH_SHA256_FROM_RELEASE"
+  sha256 "00cdb3b350364cd469edacc9c525ac55ec74de41f5f6e3eed1810736a3aad587"
   license "Apache-2.0"
 
   depends_on "openjdk@17"
