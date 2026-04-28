@@ -14,22 +14,32 @@ import dev.perf.adb.AdbDevice
 import dev.perf.adb.EmulatorManager
 import dev.perf.analysis.MonitorConfig
 import dev.perf.analysis.PerfWatchdog
+import dev.perf.analysis.screenshot.ScreenshotCapture
 import dev.perf.analysis.perfetto.PerfettoCapture
 import dev.perf.analysis.perfetto.PerfettoRecordResult
+import dev.perf.analysis.perfetto.resolveTracingPreset
+import dev.perf.analysis.proc.ProcSnapshotCapture
 import dev.perf.analysis.startup.StartupCapture
+import dev.perf.cli.gradle.GradleBuildRunner
 import dev.perf.cli.config.PerfConfig
 import dev.perf.cli.config.configExists
 import dev.perf.cli.config.loadConfig
 import dev.perf.cli.config.saveConfig
+import dev.perf.cli.docs.AndroidCliDocsRunner
 import dev.perf.cli.error.runFriendly
 import dev.perf.cli.sdk.AndroidSdkLocator
+import dev.perf.cli.scenario.GradleBuildConfig
+import dev.perf.cli.scenario.PerfettoCoverage
 import dev.perf.cli.scenario.ScenarioConfig
 import dev.perf.cli.scenario.ThresholdEvaluator
-import dev.perf.cli.docs.AndroidCliDocsRunner
 import dev.perf.cli.scenario.loadScenario
+import dev.perf.cli.scenario.ThresholdConfig
+import dev.perf.cli.scenario.resolveRunParameters
+import dev.perf.cli.workflow.WorkflowExecutor
 import dev.perf.report.ConsoleReporter
 import dev.perf.report.MarkdownReporter
 import dev.perf.report.ReportRenderExtras
+import dev.perf.report.ReportSessionMeta
 import dev.perf.report.source.SourceLinker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -39,6 +49,10 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.lang.ProcessBuilder
+import java.time.Instant
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
+import kotlin.io.path.relativeTo
 
 /**
  * `perf run` — installs, launches, monitors and reports.
@@ -84,7 +98,7 @@ class RunCommand : CliktCommand(
 
     private val projectDir: File? by option(
         "--project-dir",
-        help = "Android app project root for source links (default: auto-detect from cwd).",
+        help = "Android Gradle project root (source links + optional Gradle assemble).",
     ).file(mustExist = true, canBeFile = false)
 
     private val perfettoFlag: Boolean by option(
@@ -117,102 +131,266 @@ class RunCommand : CliktCommand(
         help = "Do not run `android docs search` on the host even if `android` is on PATH.",
     ).flag(default = false)
 
+    private val fullCli: Boolean by option(
+        "--full",
+        help = "Heavy profile when no `--scenario`: heap+perfetto+startup, Vitals preset, snapshots, screenshots, longer duration.",
+    ).flag(default = false)
+
+    private val artifactsDir: File? by option(
+        "--artifacts-dir",
+        help = "Store screenshots and pulled trace here (default: directory next to `-o`).",
+    ).file(canBeFile = false)
+
+    private val buildVariant: String? by option(
+        "--build-variant",
+        help = "With `--project-dir`, run `gradlew :module:assemble<Variant>` first (`debug` or `release`).",
+    )
+
     override fun run(): Unit = runFriendly {
         runBlocking {
             guardConfig()
 
-        val config = loadConfig()
-        val scenarioConfig = scenario?.let { loadScenario(it) }
+            val config = loadConfig()
+            val scenarioConfig = scenario?.let { loadScenario(it) }
+            val resolved = resolveRunParameters(scenarioConfig, fullCli, duration)
 
-        val effectiveDuration = scenarioConfig?.durationSeconds ?: duration
-        val effectiveHeap = scenarioConfig?.engines?.heap ?: analyzeHeap
-        val engines = scenarioConfig?.engines ?: dev.perf.cli.scenario.EngineConfig()
+            val mergedHeap = resolved.engines.heap || (scenarioConfig == null && analyzeHeap)
+            val mergedPerfetto = resolved.engines.perfetto || (scenarioConfig == null && perfettoFlag)
+            val mergedStartup = resolved.engines.startup || (scenarioConfig == null && startupFlag)
 
-        val effectiveStartup = engines.startup || startupFlag
-
-        val monitor = MonitorConfig(
-            strictMode = engines.strictMode,
-            anrHints = engines.anrHints,
-            rendering = engines.rendering,
-            startup = effectiveStartup,
-        )
-
-        val effectivePerfetto = engines.perfetto || perfettoFlag
-
-        val device = ensureAdbDevice(config)
-
-        val linker = projectDir?.let { SourceLinker(it) } ?: SourceLinker()
-
-        coroutineScope {
-            val perfettoDeferred = if (effectivePerfetto) {
-                echo("→ Perfetto: recording system trace in parallel (${effectiveDuration}s)…")
-                async(Dispatchers.IO) { capturePerfettoSession(device, effectiveDuration) }
-            } else {
-                null
-            }
-
-            apk?.let {
-                echo("→ Installing ${it.name}…")
-                device.install(it)
-            }
-
-            val coldStartMeasurement = if (monitor.startup) {
-                echo("→ Measuring cold start (am force-stop + am start -W)…")
-                withContext(Dispatchers.IO) {
-                    StartupCapture.measureColdStart(device, packageName, activityComponent)
-                }
-            } else {
-                null
-            }
-
-            val label = scenarioConfig?.name ?: "ad-hoc"
-            echo("→ Starting scenario \"$label\" for $packageName (${effectiveDuration}s)…")
-            device.shell("monkey", "-p", packageName, "-c", "android.intent.category.LAUNCHER", "1")
-
-            val watchdog = PerfWatchdog(device, packageName, monitor)
-            watchdog.start()
-            delay(effectiveDuration * 1000L)
-
-            echo("→ Collecting results…")
-            var report = watchdog.stop(effectiveHeap)
-            if (coldStartMeasurement != null) {
-                report = report.copy(coldStart = coldStartMeasurement)
-            }
-
-            val perfettoOutcome = perfettoDeferred?.await()
-            report = when (perfettoOutcome) {
-                is PerfettoOutcome.Ok -> report.copy(
-                    perfettoTraceFile = perfettoOutcome.file,
-                    perfettoMessage = null,
+            val presetEnum =
+                resolveTracingPreset(
+                    resolved.perfettoPreset,
+                    resolved.perfettoPreset == "custom" && !resolved.perfettoCategories.isNullOrEmpty(),
                 )
-                is PerfettoOutcome.Skipped -> report.copy(perfettoMessage = perfettoOutcome.reason)
-                null -> report
-            }
 
-            val breaches = scenarioConfig?.let { cfg ->
-                ThresholdEvaluator.evaluate(report, cfg.thresholds)
-            }.orEmpty()
-            if (breaches.isNotEmpty()) {
-                report = report.copy(thresholdBreaches = breaches)
-            }
+            val effectiveDurationSeconds = resolved.durationSeconds
 
-            val extras = ReportRenderExtras(
-                androidCliDocsSnippet = if (!skipAndroidDocs) {
-                    AndroidCliDocsRunner().searchForReport(report)
-                } else {
-                    null
-                },
-            )
+            val gradleCfg: GradleBuildConfig? =
+                resolved.build?.takeIf { it.enabled } ?: buildVariant.takeIf {
+                    scenarioConfig?.build?.enabled != true &&
+                        it != null &&
+                        !it.equals("disabled", ignoreCase = true)
+                }?.let { variant ->
+                    GradleBuildConfig(enabled = true, variant = variant, module = scenarioConfig?.build?.module ?: ":app")
+                }
 
-            ConsoleReporter(terminal, linker).print(report, extras)
-            MarkdownReporter(linker).write(report, output, extras)
-            echo("→ Report saved to ${output.absolutePath}")
+            val device = ensureAdbDevice(config)
+            val linker = projectDir?.let { SourceLinker(it) } ?: SourceLinker()
 
-            if (breaches.isNotEmpty()) {
-                throw ProgramResult(1)
+            val artifactRootHost: File =
+                artifactsDir ?: File(output.absoluteFile.parentFile ?: File("."), "perf-artifacts").also { it.mkdirs() }
+            artifactRootHost.mkdirs()
+
+            coroutineScope {
+                if (apk != null && gradleCfg != null) {
+                    throw CliktError("Use either `--apk` or Gradle build (`scenario.build` / `--build-variant`), not both.")
+                }
+                if (gradleCfg != null) {
+                    val root = projectDir
+                        ?: throw CliktError("Gradle assemble requires `--project-dir` pointing to the Android project root.")
+                    echo("→ Gradle: ${GradleBuildRunner.assembleTask(gradleCfg.module, gradleCfg.variant)} …")
+                    val built = GradleBuildRunner.assemble(root, gradleCfg).getOrElse { e ->
+                        throw CliktError(e.message ?: e.toString())
+                    }
+                    echo("→ Installing ${built.absolutePath}…")
+                    device.install(built)
+                }
+                apk?.let {
+                    echo("→ Installing ${it.name}…")
+                    device.install(it)
+                }
+
+                val tracingSeconds =
+                    when (resolved.perfettoCoverage) {
+                        PerfettoCoverage.SESSION ->
+                            effectiveDurationSeconds.coerceAtLeast(5)
+
+                        PerfettoCoverage.STARTUP ->
+                            kotlin.math.min(effectiveDurationSeconds, 120).coerceAtLeast(
+                                kotlin.math.min(15, effectiveDurationSeconds),
+                            )
+                    }.coerceAtLeast(5)
+
+                val perfettoDeferred =
+                    if (mergedPerfetto) {
+                        echo("→ Perfetto: preset=${resolved.perfettoPreset}, ${tracingSeconds}s, coverage=${resolved.perfettoCoverage}…")
+                        async(Dispatchers.IO) {
+                            capturePerfettoSession(
+                                device = device,
+                                durationSec = tracingSeconds,
+                                presetEnum = presetEnum,
+                                categories = resolved.perfettoCategories,
+                                artifactCopyDir = artifactRootHost,
+                                packageLabel = packageName,
+                            )
+                        }
+                    } else {
+                        null
+                    }
+
+                val coldStartMeasurement =
+                    if (mergedStartup) {
+                        echo("→ Measuring cold start (am force-stop + am start -W)…")
+                        delay(400)
+                        withContext(Dispatchers.IO) {
+                            StartupCapture.measureColdStart(device, packageName, activityComponent)
+                        }
+                    } else {
+                        null
+                    }
+
+                if (coldStartMeasurement != null) {
+                    delay(300)
+                }
+
+                val label = scenarioConfig?.name ?: "ad-hoc"
+                echo("→ Scenario \"$label\" for $packageName (${effectiveDurationSeconds}s monitoring)…")
+
+                val screenshotArtifacts = mutableListOf<String>()
+                val wfShotFiles = mutableListOf<File>()
+                if (resolved.screenshotsEnabled) {
+                    val f = screenshotFileNext(artifactRootHost, "start", screenshotArtifacts.size)
+                    ScreenshotCapture.capture(device, f)
+                    screenshotArtifacts.add(relativePathForReport(output, f))
+                }
+
+                device.shell(
+                    "monkey",
+                    "-p",
+                    packageName,
+                    "-c",
+                    "android.intent.category.LAUNCHER",
+                    "1",
+                )
+
+                if (resolved.workflow.isNotEmpty()) {
+                    kotlinx.coroutines.delay(300)
+                    WorkflowExecutor(device, packageName).run(
+                        resolved.workflow,
+                        screenshotFile = { step, index ->
+                            val labelSlug =
+                                step.label?.replace(nonAlnum, "-")?.trim('-')
+                                    ?: "step-$index"
+                            screenshotFileNext(artifactRootHost, labelSlug.ifEmpty { "wf-$index" }, index)
+                        },
+                        emittedScreenshots = wfShotFiles,
+                    )
+                    wfShotFiles.forEach {
+                        screenshotArtifacts.add(relativePathForReport(output, it))
+                    }
+                }
+
+                val monitor = MonitorConfig(
+                    strictMode = resolved.engines.strictMode,
+                    anrHints = resolved.engines.anrHints,
+                    rendering = resolved.engines.rendering,
+                    startup = mergedStartup,
+                )
+
+                val monitorStartedAt = Instant.now()
+                val watchdog = PerfWatchdog(device, packageName, monitor)
+                watchdog.start()
+                delay(effectiveDurationSeconds * 1000L)
+                val monitorEndedAt = Instant.now()
+
+                echo("→ Collecting results…")
+
+                val reportBeforeSidecars = watchdog.stop(mergedHeap)
+                val procSnapshot =
+                    if (resolved.collectProcSnapshot) {
+                        withContext(Dispatchers.IO) { ProcSnapshotCapture(device).capture(packageName) }
+                    } else {
+                        null
+                    }
+
+                var report = reportBeforeSidecars.copy(procSnapshot = procSnapshot)
+
+                if (coldStartMeasurement != null) {
+                    report = report.copy(coldStart = coldStartMeasurement)
+                }
+
+                if (resolved.screenshotsEnabled) {
+                    val f =
+                        screenshotFileNext(artifactRootHost, "end", screenshotArtifacts.size)
+                    kotlinx.coroutines.delay(400)
+                    ScreenshotCapture.capture(device, f)
+                    screenshotArtifacts.add(relativePathForReport(output, f))
+                }
+
+                report = report.copy(screenshotArtifacts = screenshotArtifacts)
+
+                val perfettoOutcome = perfettoDeferred?.await()
+                report =
+                    when (perfettoOutcome) {
+                        is PerfettoOutcome.Ok -> report.copy(
+                            perfettoTraceFile = perfettoOutcome.file,
+                            perfettoMessage = null,
+                            perfettoDegradedFromVitalsPreset = perfettoOutcome.degraded,
+                        )
+
+                        is PerfettoOutcome.Skipped -> report.copy(perfettoMessage = perfettoOutcome.reason)
+                        null -> report
+                    }
+
+                val breaches =
+                    ThresholdEvaluator.evaluate(
+                        report,
+                        scenarioConfig?.thresholds ?: ThresholdConfig(),
+                    )
+                report =
+                    if (breaches.isNotEmpty()) {
+                        report.copy(thresholdBreaches = breaches)
+                    } else {
+                        report
+                    }
+
+                val generatedAt = Instant.now()
+                val extras =
+                    ReportRenderExtras(
+                        androidCliDocsSnippet = if (!skipAndroidDocs) {
+                            AndroidCliDocsRunner().searchForReport(report)
+                        } else {
+                            null
+                        },
+                        sessionMeta =
+                            ReportSessionMeta(
+                                generatedAtIso = isoInstant(generatedAt),
+                                monitorWindowStartIso = isoInstant(monitorStartedAt),
+                                monitorWindowEndIso = isoInstant(monitorEndedAt),
+                                scenarioLabel = scenarioConfig?.name,
+                                fullMode = fullCli || scenarioConfig?.profile.equals(
+                                    "full",
+                                    ignoreCase = true,
+                                ),
+                            ),
+                    )
+
+                ConsoleReporter(terminal, linker).print(report, extras)
+                MarkdownReporter(linker).write(report, output, extras)
+                echo("→ Report saved to ${output.absolutePath}")
+
+                if (report.thresholdBreaches.isNotEmpty()) {
+                    throw ProgramResult(1)
+                }
             }
         }
-        }
+    }
+
+    private fun isoInstant(ins: Instant) = DateTimeFormatter.ISO_INSTANT.withZone(ZoneOffset.UTC).format(ins)
+
+    private val nonAlnum = Regex("[^a-zA-Z0-9]+")
+
+    private fun screenshotFileNext(root: File, label: String, index: Int): File {
+        val safe = "${System.currentTimeMillis()}-$index-$label.png".replace("/", "-")
+        return File(root, safe)
+    }
+
+    private fun relativePathForReport(reportOut: File, artifact: File): String {
+        val base = reportOut.absoluteFile.parentFile ?: artifact.parentFile ?: return artifact.name
+        return runCatching {
+            artifact.toPath().relativeTo(base.toPath()).toString().replace('\\', '/')
+        }.getOrElse { artifact.name }
     }
 
     private suspend fun ensureAdbDevice(config: PerfConfig): AdbDevice {
@@ -268,20 +446,35 @@ class RunCommand : CliktCommand(
         }
     }
 
-    private suspend fun capturePerfettoSession(device: AdbDevice, durationSec: Int): PerfettoOutcome {
+    private suspend fun capturePerfettoSession(
+        device: AdbDevice,
+        durationSec: Int,
+        presetEnum: dev.perf.analysis.perfetto.PerfettoTracingPreset,
+        categories: List<String>?,
+        artifactCopyDir: File,
+        packageLabel: String,
+    ): PerfettoOutcome {
         val cap = PerfettoCapture(device)
-        val remote = when (val rec = cap.recordToRemotePath(durationSec)) {
-            is PerfettoRecordResult.Ok -> rec.remotePath
-            is PerfettoRecordResult.Failed ->
-                return PerfettoOutcome.Skipped(rec.reason)
+        val rec = cap.recordToRemotePath(durationSec, presetEnum, categories)
+        when (rec) {
+            is PerfettoRecordResult.Ok -> {
+                val pulled =
+                    File(
+                        System.getProperty("java.io.tmpdir"),
+                        "perfetto-${packageLabel.replace('.', '-')}-$durationSec.perfetto-trace",
+                    )
+                artifactCopyDir.mkdirs()
+                val copyTo =
+                    File(artifactCopyDir, "perfetto-${System.currentTimeMillis()}.perfetto-trace").absoluteFile
+                device.pull(rec.remotePath, pulled)
+                pulled.copyTo(copyTo, overwrite = true)
+                runCatching { pulled.delete() }
+                runCatching { device.shell("rm", rec.remotePath) }
+                return PerfettoOutcome.Ok(copyTo, rec.degradedFromVitalsPreset)
+            }
+
+            is PerfettoRecordResult.Failed -> return PerfettoOutcome.Skipped(rec.reason)
         }
-        val local = File(
-            System.getProperty("java.io.tmpdir"),
-            "perfetto-${packageName.replace('.', '-')}-$durationSec.perfetto-trace",
-        )
-        device.pull(remote, local)
-        runCatching { device.shell("rm", remote) }
-        return PerfettoOutcome.Ok(local)
     }
 
     private fun guardConfig() {
@@ -299,7 +492,7 @@ class RunCommand : CliktCommand(
     }
 
     private sealed class PerfettoOutcome {
-        data class Ok(val file: File) : PerfettoOutcome()
+        data class Ok(val file: File, val degraded: Boolean = false) : PerfettoOutcome()
         data class Skipped(val reason: String) : PerfettoOutcome()
     }
 }

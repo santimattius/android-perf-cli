@@ -36,7 +36,8 @@ class MarkdownReporter(private val sourceLinker: SourceLinker? = null) {
     }
 
     fun render(report: PerfReport, extras: ReportRenderExtras = ReportRenderExtras()): String = buildString {
-        appendHeader(report)
+        appendHeader(report, extras)
+        appendSidecarEvidence(report)
 
         if (!report.hasIssues) {
             appendLine("> No performance issues detected. Ship it.")
@@ -77,7 +78,15 @@ class MarkdownReporter(private val sourceLinker: SourceLinker? = null) {
             VitalsPlaybook.renderingSection().forEach { appendLine(it) }
         }
         appendPerfettoFooter(report)
+        VitalsPlaybook.playConsoleLimitationsBanner().forEach { appendLine(it) }
         appendAndroidCliSection(extras)
+    }
+
+    /** Screenshots / mem snapshots when engines ran without top-level severity issues. */
+    private fun StringBuilder.appendSidecarEvidence(report: PerfReport) {
+        if (report.procSnapshot != null || report.screenshotArtifacts.isNotEmpty()) {
+            appendEvidenceSections(report)
+        }
     }
 
     private fun StringBuilder.appendColdStartSummary(cs: ColdStartMeasurement) {
@@ -135,13 +144,52 @@ class MarkdownReporter(private val sourceLinker: SourceLinker? = null) {
         report.perfettoTraceFile?.let {
             appendLine("## Perfetto trace")
             appendLine()
-            appendLine("Open `${it.absolutePath}` in [Perfetto UI](https://ui.perfetto.dev) for scheduling, frames, and binder detail.")
+            appendLine(
+                if (report.perfettoDegradedFromVitalsPreset) {
+                    "_Note:_ `vitals` preset categories failed on this device — trace captured with baseline categories.\n"
+                } else {
+                    ""
+                },
+            )
+            appendLine(
+                "Open `${it.absolutePath}` in [Perfetto UI](https://ui.perfetto.dev). " +
+                    "Review **sched / gfx / binder** timelines against [slow rendering](https://developer.android.com/topic/performance/vitals/render) and [startup](https://developer.android.com/topic/performance/vitals/launch-time) Vitals docs.",
+            )
             appendLine()
+            VitalsPlaybook.perfettoAnalysisHints().forEach { appendLine(it) }
         }
         report.perfettoMessage?.let { msg ->
             appendLine("## Perfetto")
             appendLine()
             appendLine("> $msg")
+            appendLine()
+        }
+    }
+
+    private fun StringBuilder.appendEvidenceSections(report: PerfReport) {
+        report.procSnapshot?.let { p ->
+            appendLine("## Process snapshot (`meminfo` / threads)")
+            appendLine()
+            p.threadCount?.let {
+                appendLine("**Threads (from /proc/.../status):** `$it`")
+                appendLine()
+            }
+            VitalsPlaybook.procSnapshotGuidance().forEach { appendLine(it) }
+            appendLine("```text")
+            appendLine(p.meminfoSnippet.lines().take(80).joinToString("\n").trimEnd())
+            appendLine("```")
+            appendLine()
+            VitalsPlaybook.memoryStressSection().forEach { appendLine(it) }
+        }
+
+        if (report.screenshotArtifacts.isNotEmpty()) {
+            appendLine("## Screenshots")
+            appendLine()
+            report.screenshotArtifacts.forEach { rel ->
+                appendLine("- `./$rel`")
+            }
+            appendLine()
+            appendLine(VitalsPlaybook.screenshotEvidenceGuidance())
             appendLine()
         }
     }
@@ -171,7 +219,7 @@ class MarkdownReporter(private val sourceLinker: SourceLinker? = null) {
 
     // ── Sections ──────────────────────────────────────────────────────────────
 
-    private fun StringBuilder.appendHeader(report: PerfReport) {
+    private fun StringBuilder.appendHeader(report: PerfReport, extras: ReportRenderExtras) {
         val timestamp = Instant.now()
             .atZone(ZoneId.systemDefault())
             .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss z"))
@@ -181,7 +229,18 @@ class MarkdownReporter(private val sourceLinker: SourceLinker? = null) {
         appendLine("| Field | Value |")
         appendLine("|-------|-------|")
         appendLine("| Package | `${report.packageName}` |")
-        appendLine("| Date | $timestamp |")
+        val genIso =
+            extras.sessionMeta?.generatedAtIso
+                ?: java.time.format.DateTimeFormatter.ISO_INSTANT.format(Instant.now())
+        appendLine("| Report generated (UTC / ISO‑8601) | `$genIso` |")
+        extras.sessionMeta?.let { m ->
+            appendLine("| Monitoring window | `${m.monitorWindowStartIso}` → `${m.monitorWindowEndIso}` |")
+            appendLine("| Scenario | ${m.scenarioLabel ?: "—"} |")
+            appendLine("| Full mode | ${if (m.fullMode) "yes" else "no"} |")
+        }
+        if (extras.sessionMeta == null) {
+            appendLine("| Report generated (local clock) | $timestamp |")
+        }
         appendLine("| Overall Severity | ${report.overallSeverity.badge()} |")
         report.coldStart?.let { cs ->
             val t = cs.totalTimeMs?.let { "$it ms" } ?: "—"

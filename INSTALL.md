@@ -129,13 +129,29 @@ If any **threshold** is breached, the process exits with code **1** (CI-friendly
 | `maxPotentialAnrHints` | `50` | Max count of **WARNING**-or-higher ANR *hint* events (see `anrHints`). |
 | `maxColdStartMs` | `null` | When set and `startup` is enabled, fails if cold-start **TotalTime** exceeds this many ms. |
 
-A full example is in [scenarios/example-scenario.json](scenarios/example-scenario.json).
+A full example is in [scenarios/example-scenario.json](scenarios/example-scenario.json). A **heavy / full** profile (heap, Perfetto, startup, proc snapshot, screenshots) is in [scenarios/example-full.json](scenarios/example-full.json).
+
+Optional scenario keys (when not using pure CLI flags):
+
+| Key | Role |
+|-----|------|
+| `profile` | `"full"` merges in heavy engines (`heap`, `perfetto`, `startup`), bumps default Perfetto preset toward **vitals** when unset, and turns on proc snapshot + screenshots unless you disable them explicitly. |
+| `perfettoPreset` | `default`, `vitals`, or `custom` (with `perfettoCategories`). |
+| `perfettoCoverage` | `session` (trace length ≈ monitoring window) or `startup` (shorter trace capped for startup analysis). |
+| `perfettoCategories` | Extra light-mode category names when `perfettoPreset` is `custom`. |
+| `screenshots` | `true` to capture PNGs via `adb exec-out screencap` into the artifacts directory. |
+| `collectProcSnapshot` | `true` to append `dumpsys meminfo` + thread count to the report. |
+| `workflow` | JSON array of steps: `wait`, `deeplink` (`uri`), `keyevent` (`key`), `tap`/`swipe`, `gfx_reset`, `screenshot` (stored next to the report). |
+| `build` | `{ "enabled": true, "variant": "debug", "module": ":app" }` runs `./gradlew :module:assemble<Variant>` (**requires** `--project-dir`). |
 
 #### Extra `perf run` flags
 
 | Flag | Purpose |
 |------|---------|
-| `--project-dir <dir>` | Android project root used to build **clickable source links** in the report (if omitted, the tool tries to infer from the current directory). |
+| `--full` | Without `--scenario`: enables the same “heavy” bundle as `profile: full` (heap, Perfetto Vitals preset fallback, startup, snapshots, screenshots, **120s** monitoring default). |
+| `--artifacts-dir <dir>` | Where to store screenshots and copied Perfetto traces (default: `perf-artifacts` next to `-o`). |
+| `--build-variant debug\|release` | With `--project-dir`, Gradle-assemble that variant before install (conflicts with `--apk`). |
+| `--project-dir <dir>` | Android Gradle project root for **source links**, optional **Gradle assemble**, and workflow context. |
 | `--perfetto` | Record a Perfetto trace for the session (same idea as `engines.perfetto: true`; either enables tracing). Trace is pulled to the host; open it in [Perfetto UI](https://ui.perfetto.dev). |
 | `--skip-emulator` | Do **not** auto-start the **default AVD** from `perf init` when no device is connected. |
 | `--emulator-headless` | When an AVD is auto-launched, pass `-no-window` (useful in CI). |

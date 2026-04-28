@@ -34,6 +34,30 @@ class AdbDevice(
         execute("install", *flags, apk.absolutePath)
     }
 
+    override fun execOut(vararg args: String): ByteArray {
+        val command = buildList {
+            add(adbPath)
+            add("-s")
+            add(serial)
+            add("exec-out")
+            addAll(args)
+        }
+        val process = ProcessBuilder(command)
+            .redirectErrorStream(false)
+            .start()
+        val stdout = process.inputStream.readAllBytes()
+        val stderr = process.errorStream.bufferedReader().readText()
+        val exitCode = process.waitFor()
+        if (exitCode != 0) {
+            throw AdbException(
+                command = command.joinToString(" "),
+                exitCode = exitCode,
+                stderr = stderr.trim(),
+            )
+        }
+        return stdout
+    }
+
     // ── Raw execution ─────────────────────────────────────────────────────────
 
     /**

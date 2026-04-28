@@ -1,0 +1,14 @@
+{
+  "name": "full-health-check",
+  "profile": "full",
+  "durationSeconds": 120,
+  "perfettoPreset": "default",
+  "perfettoCoverage": "session",
+  "thresholds": {
+    "maxJankyPercent": 5.0,
+    "maxFrozenFrames": 0,
+    "maxStrictModeViolations": 10,
+    "maxPotentialAnrHints": 50,
+    "maxColdStartMs": 4000
+  }
+}

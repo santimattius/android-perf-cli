@@ -45,4 +45,6 @@ class FakeAdbClient(
     override fun pull(devicePath: String, destination: File): File = destination
     override fun push(source: File, devicePath: String) = Unit
     override fun install(apk: File, replace: Boolean) = Unit
+
+    override fun execOut(vararg args: String): ByteArray = byteArrayOf()
 }
