@@ -1,5 +1,7 @@
 # Android Perf CLI — Installation
 
+**Narrative `perf run` guide (full profile, workflow, Gradle):** see [docs/perf-cli-run.md](docs/perf-cli-run.md).
+
 For **prebuilt binaries, Homebrew, and GraalVM native image**, see [DISTRIBUTION.md](DISTRIBUTION.md).
 
 ## Requirements
