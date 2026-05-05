@@ -4,19 +4,39 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.io.File
 
-private val json = Json { ignoreUnknownKeys = true; prettyPrint = false }
+private val json = Json {
+    ignoreUnknownKeys = true
+    prettyPrint = false
+}
+
+@Serializable
+data class GradleBuildConfig(
+    val enabled: Boolean = false,
+    val variant: String = "debug",
+    val module: String = ":app",
+    val task: String? = null,
+)
+
+@Serializable
+data class WorkflowStep(
+    val type: String,
+    val seconds: Double? = null,
+    val uri: String? = null,
+    /** `BACK`, `HOME`, or numeric keycode string. */
+    val key: String? = null,
+    val x: Int? = null,
+    val y: Int? = null,
+    val x2: Int? = null,
+    val y2: Int? = null,
+    val durationMs: Long? = null,
+    val label: String? = null,
+)
 
 /**
  * Declarative configuration for a monitoring scenario.
  *
- * Design decision: the scenario is a plain JSON file (not flags) so that CI
- * pipelines can version-control per-screen profiles alongside the test suite.
- * A flag-based API would require rebuilding command strings; a JSON file is
- * committable, diffable, and shareable across team members.
- *
- * Design decision: most engine flags default to true. **heap**, **perfetto**,
- * and **startup** default to false (heavy / disruptive). Opt-out remains the
- * default for strictMode, rendering, and anrHints.
+ * Use `"profile":"full"` for heavyweight engines (`heap`, `perfetto`, `startup`), presets, and tooling
+ * presets (snapshots/screenshots)—see [`resolveRunParameters`] for exact merge behaviour.
  *
  * Example scenario file:
  * ```json
@@ -44,9 +64,21 @@ private val json = Json { ignoreUnknownKeys = true; prettyPrint = false }
 @Serializable
 data class ScenarioConfig(
     val name: String,
+    /** When `"full"` (same idea as `--full`), heavyweight engines flip on and defaults expand. */
+    val profile: String? = null,
     val durationSeconds: Int = 30,
     val engines: EngineConfig = EngineConfig(),
     val thresholds: ThresholdConfig = ThresholdConfig(),
+    /** `default`, `vitals`, or `custom` (requires `perfettoCategories`). */
+    val perfettoPreset: String = "default",
+    /** `session` records over the watchdog window; `startup` aligns with startup-only trace. */
+    val perfettoCoverage: String = "session",
+    /** Categories when preset is `custom` (`perfetto` light-mode names). */
+    val perfettoCategories: List<String> = emptyList(),
+    val collectProcSnapshot: Boolean = false,
+    val screenshots: Boolean = false,
+    val workflow: List<WorkflowStep> = emptyList(),
+    val build: GradleBuildConfig = GradleBuildConfig(),
 )
 
 @Serializable

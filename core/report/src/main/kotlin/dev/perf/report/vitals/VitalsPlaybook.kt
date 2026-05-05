@@ -70,4 +70,33 @@ object VitalsPlaybook {
         "_Below is optional output from `android docs search` when the Android CLI is on your PATH._",
         "",
     )
+
+    fun perfettoAnalysisHints(): List<String> = listOf(
+        "### How to read this trace (Vitals context)",
+        "- Cross-check **GFX / View** slices with [Slow rendering](https://developer.android.com/topic/performance/vitals/render).",
+        "- For **sched / main thread** stalls see [ANRs](https://developer.android.com/topic/performance/vitals/anr) and [Slow sessions](https://developer.android.com/topic/performance/vitals/slow-session).",
+        "",
+    )
+
+    fun procSnapshotGuidance(): List<String> = listOf(
+        "_Coarse baseline only — aggregate crash/ANR rates live in Play Console ([Android Vitals]($VITALS_HUB))._",
+        "",
+    )
+
+    fun memoryStressSection(): List<String> = listOf(
+        "### Guidance (Vitals: memory pressure)",
+        "- Compare PSS/native heap trajectory with [LMK Vitals background](https://developer.android.com/topic/performance/vitals/lmk) if devices are killed under pressure.",
+        "- [Manage memory](https://developer.android.com/topic/performance/memory-management)",
+        "",
+    )
+
+    fun screenshotEvidenceGuidance(): String =
+        "_Screenshots complement metrics; correlate with Rendering and Perfetto timelines._"
+
+    fun playConsoleLimitationsBanner(): List<String> = listOf(
+        "---",
+        "",
+        "**Note:** [Android Vitals]($VITALS_HUB) on Play aggregates user sessions and certification rules; offline CLI metrics are **signals**, not parity with Play dashboards.",
+        "",
+    )
 }

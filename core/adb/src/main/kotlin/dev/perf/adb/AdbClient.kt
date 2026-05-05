@@ -28,6 +28,11 @@ interface AdbClient {
     fun push(source: File, devicePath: String)
     fun install(apk: File, replace: Boolean = true)
 
+    /**
+     * Runs `adb exec-out …` and returns raw stdout (e.g. PNG from `screencap -p`).
+     */
+    fun execOut(vararg args: String): ByteArray
+
     suspend fun shellAsync(vararg args: String): String =
         withContext(Dispatchers.IO) { shell(*args) }
 

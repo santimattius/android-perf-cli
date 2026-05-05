@@ -3,6 +3,7 @@ package dev.perf.analysis
 import dev.perf.analysis.model.ColdStartMeasurement
 import dev.perf.analysis.model.MemoryLeak
 import dev.perf.analysis.model.PotentialAnrHint
+import dev.perf.analysis.model.ProcSnapshotSummary
 import dev.perf.analysis.model.RenderingIncident
 import dev.perf.analysis.model.Severity
 import dev.perf.analysis.model.StrictModeViolation
@@ -27,6 +28,11 @@ data class PerfReport(
     val perfettoTraceFile: File? = null,
     /** Non-null when perfetto was skipped or failed (inform user). */
     val perfettoMessage: String? = null,
+    /** When the `vitals` preset failed and was retried with baseline categories. */
+    val perfettoDegradedFromVitalsPreset: Boolean = false,
+    val procSnapshot: ProcSnapshotSummary? = null,
+    /** Paths relative to report file (or labels) for screenshots taken during the run. */
+    val screenshotArtifacts: List<String> = emptyList(),
 ) {
     val hasIssues: Boolean
         get() = strictModeViolations.isNotEmpty()
