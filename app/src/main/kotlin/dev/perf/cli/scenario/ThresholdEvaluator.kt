@@ -20,6 +20,11 @@ import dev.perf.analysis.model.ThresholdBreach
  */
 object ThresholdEvaluator {
 
+    fun applyToReport(report: PerfReport, thresholds: ThresholdConfig): PerfReport {
+        val breaches = evaluate(report, thresholds)
+        return report.copy(thresholdBreaches = breaches)
+    }
+
     fun evaluate(report: PerfReport, thresholds: ThresholdConfig): List<ThresholdBreach> =
         buildList {
             val rendering = report.renderingIncident
@@ -31,8 +36,8 @@ object ThresholdEvaluator {
                     add(
                         ThresholdBreach(
                             "Janky frame rate %.1f%% exceeds threshold of %.1f%%"
-                                .format(jankyPercent, thresholds.maxJankyPercent)
-                        )
+                                .format(jankyPercent, thresholds.maxJankyPercent),
+                        ),
                     )
                 }
             }
@@ -40,8 +45,8 @@ object ThresholdEvaluator {
             if (rendering.frozenFrames > thresholds.maxFrozenFrames) {
                 add(
                     ThresholdBreach(
-                        "Frozen frames ${rendering.frozenFrames} exceeds threshold of ${thresholds.maxFrozenFrames}"
-                    )
+                        "Frozen frames ${rendering.frozenFrames} exceeds threshold of ${thresholds.maxFrozenFrames}",
+                    ),
                 )
             }
 
@@ -49,8 +54,8 @@ object ThresholdEvaluator {
                 add(
                     ThresholdBreach(
                         "StrictMode violations ${report.strictModeViolations.size} " +
-                            "exceeds threshold of ${thresholds.maxStrictModeViolations}"
-                    )
+                            "exceeds threshold of ${thresholds.maxStrictModeViolations}",
+                    ),
                 )
             }
 
@@ -58,18 +63,38 @@ object ThresholdEvaluator {
             if (anrRiskCount > thresholds.maxPotentialAnrHints) {
                 add(
                     ThresholdBreach(
-                        "Potential ANR-risk log signals ($anrRiskCount) exceed threshold of ${thresholds.maxPotentialAnrHints}"
-                    )
+                        "Potential ANR-risk log signals ($anrRiskCount) exceed threshold of ${thresholds.maxPotentialAnrHints}",
+                    ),
                 )
             }
 
             val maxCold = thresholds.maxColdStartMs
-            val totalMs = report.coldStart?.totalTimeMs
-            if (maxCold != null && totalMs != null && totalMs > maxCold) {
+            val coldP50 = report.startup?.cold?.p50Ms ?: report.coldStart?.totalTimeMs
+            if (maxCold != null && coldP50 != null && coldP50 > maxCold) {
                 add(
                     ThresholdBreach(
-                        "Cold start TotalTime ${totalMs}ms exceeds threshold of ${maxCold}ms",
-                    )
+                        "Cold start P50 ${coldP50}ms exceeds threshold of ${maxCold}ms",
+                    ),
+                )
+            }
+
+            val maxWarm = thresholds.maxWarmStartMs
+            val warmP50 = report.startup?.warm?.p50Ms
+            if (maxWarm != null && warmP50 != null && warmP50 > maxWarm) {
+                add(
+                    ThresholdBreach(
+                        "Warm start P50 ${warmP50}ms exceeds threshold of ${maxWarm}ms",
+                    ),
+                )
+            }
+
+            val maxHot = thresholds.maxHotStartMs
+            val hotP50 = report.startup?.hot?.p50Ms
+            if (maxHot != null && hotP50 != null && hotP50 > maxHot) {
+                add(
+                    ThresholdBreach(
+                        "Hot start P50 ${hotP50}ms exceeds threshold of ${maxHot}ms",
+                    ),
                 )
             }
         }

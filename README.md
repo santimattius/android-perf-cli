@@ -1,6 +1,6 @@
 # Android Perf CLI
 
-A **command-line tool for Android app performance monitoring** on real devices and emulators. It collects signals such as **StrictMode violations**, **janky / frozen frames**, **optional cold start timings**, heuristic **ANR-risk hints** from logcat, optional **heap analysis** ([Shark](https://square.github.io/leakcanary/shark/)), optional **Perfetto** system traces (with **`default`** / **`vitals`** presets and graceful fallback), optional **Gradle-assembled APKs**, and optional **automated workflows** (deeplinks, input, screenshots). It writes a **Markdown report** with **ISO-8601 timestamps**, **Android Vitals**–oriented guidance links, and prints a concise summary in the terminal.
+A **command-line tool for Android app performance monitoring** on real devices and emulators. It collects signals such as **StrictMode violations**, **janky / frozen frames**, **optional startup timings** (cold / warm / hot with TTID/TTFD from logcat where available, plus legacy **`am start -W`** cold totals), heuristic **ANR-risk hints** from logcat, optional **heap analysis** ([Shark](https://square.github.io/leakcanary/shark/)), optional **Perfetto** system traces (with **`default`** / **`vitals`** presets and graceful fallback), optional **Gradle-assembled APKs**, and optional **automated workflows** (deeplinks, input, screenshots). It writes a **Markdown report** with **ISO-8601 timestamps**, **Android Vitals**–oriented guidance links, and prints a concise summary in the terminal.
 
 Designed for **local debugging** and **CI**: JSON **scenarios** can define **`profile": "full"`** or **`--full`** for a heavy bundled run; **thresholds** make the process exit **`1`** on breach so pipelines fail when performance regresses.
 
@@ -14,7 +14,7 @@ Designed for **local debugging** and **CI**: JSON **scenarios** can define **`pr
 | **Rendering** | `dumpsys gfxinfo` frame stats (janky / frozen frames, percentiles). |
 | **StrictMode** | Disk/network-on-main-thread and other StrictMode issues from logcat (package PID scoped). |
 | **ANR hints (heuristic)** | Logcat-based signals (e.g. skipped frames, slow dispatch) — **not** a substitute for Vitals ANR rates or real ANRs. |
-| **Cold start** | Optional **`am force-stop`** + **`am start -W`**; threshold **`maxColdStartMs`** in scenarios. |
+| **Startup** | When **`engines.startup`** is on: multi-type sampling via **`startupTypes`** (e.g. cold/warm/hot), **`startupSamples`**, and logcat-backed TTID/TTFD aggregation. Scenario thresholds **`maxColdStartMs`** (cold P50), **`maxWarmStartMs`**, **`maxHotStartMs`**. Legacy **`coldStart`** on the report remains for backward compatibility. |
 | **Perfetto (optional)** | Presets **`default`**, **`vitals`** (+fallback), or **`custom`** categories; coverage **`session`** or **`startup`**. Opens in [Perfetto UI](https://ui.perfetto.dev). |
 | **Heap (optional)** | Heap dump end-of-session + Shark analysis (debuggable builds / permissions permitting). |
 | **Process snapshot** | Optional **`dumpsys meminfo`** excerpt + thread count (`/proc/.../status`). |
@@ -104,7 +104,7 @@ Notable **`perf run`** flags (see **`run --help`** and [INSTALL.md](INSTALL.md) 
 
 ## CI and scenarios
 
-Define engines, optional **`profile`** / Perfetto keys, **`workflow`**, **`build`**, and **thresholds** in JSON.
+Define engines (including **`startup`**, **`startupTypes`**, **`startupSamples`**), optional **`profile`** / Perfetto keys, **`workflow`**, **`build`**, and **thresholds** (including **`maxColdStartMs`**, **`maxWarmStartMs`**, **`maxHotStartMs`**) in JSON — see [example-scenario.json](scenarios/example-scenario.json) and [example-full.json](scenarios/example-full.json).
 
 ```bash
 perf run --package com.example.app.debug --scenario scenarios/example-scenario.json

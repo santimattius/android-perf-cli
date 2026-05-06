@@ -2,6 +2,8 @@ package dev.perf.report
 
 import dev.perf.analysis.PerfReport
 import dev.perf.analysis.model.ColdStartMeasurement
+import dev.perf.analysis.model.startup.StartupReport
+import dev.perf.analysis.model.startup.StartupStats
 import dev.perf.analysis.model.MemoryLeak
 import dev.perf.analysis.model.PotentialAnrHint
 import dev.perf.analysis.model.RenderingIncident
@@ -41,7 +43,8 @@ class MarkdownReporter(private val sourceLinker: SourceLinker? = null) {
 
         if (!report.hasIssues) {
             appendLine("> No performance issues detected. Ship it.")
-            report.coldStart?.let { appendColdStartSummary(it) }
+            report.startup?.let { appendStartupSummary(it) }
+                ?: report.coldStart?.let { appendColdStartSummary(it) }
             report.perfettoTraceFile?.let {
                 appendLine()
                 appendLine("### Perfetto trace")
@@ -57,7 +60,8 @@ class MarkdownReporter(private val sourceLinker: SourceLinker? = null) {
         }
 
         if (report.thresholdBreaches.isNotEmpty()) appendThresholdBreaches(report.thresholdBreaches)
-        report.coldStart?.let { appendColdStartSection(it) }
+        report.startup?.let { appendStartupSection(it) }
+            ?: report.coldStart?.let { appendColdStartSection(it) }
         if (report.memoryLeaks.isNotEmpty()) {
             appendLeaks(report.memoryLeaks)
             VitalsPlaybook.memoryLeaksSection().forEach { appendLine(it) }
@@ -87,6 +91,60 @@ class MarkdownReporter(private val sourceLinker: SourceLinker? = null) {
         if (report.procSnapshot != null || report.screenshotArtifacts.isNotEmpty()) {
             appendEvidenceSections(report)
         }
+    }
+
+    private fun StringBuilder.appendStartupSummary(sr: StartupReport) {
+        appendLine()
+        appendLine("### Startup (measured)")
+        appendLine()
+        appendLine("| Kind | P50 TTID | P50 TTFD | Severity |")
+        appendLine("|------|----------|----------|----------|")
+        appendStartupStatsRow("Cold", sr.cold)
+        appendStartupStatsRow("Warm", sr.warm)
+        appendStartupStatsRow("Hot", sr.hot)
+        appendLine()
+        appendLine("**Parsed:** ${if (sr.parsedOk) "yes" else "no"}")
+        appendLine()
+        appendLine("_${sr.message}_")
+        appendLine()
+        VitalsPlaybook.startupSection().forEach { appendLine(it) }
+    }
+
+    private fun StringBuilder.appendStartupSection(sr: StartupReport) {
+        appendLine("## Startup")
+        appendLine()
+        appendLine("| Parsed OK | ${if (sr.parsedOk) "yes" else "no"} |")
+        appendLine("| Overall | ${sr.overallSeverity.badge()} |")
+        appendLine()
+        appendLine(sr.message)
+        appendLine()
+        appendStartupKindBlock("Cold", sr.cold)
+        appendStartupKindBlock("Warm", sr.warm)
+        appendStartupKindBlock("Hot", sr.hot)
+        VitalsPlaybook.startupSection().forEach { appendLine(it) }
+    }
+
+    private fun StringBuilder.appendStartupStatsRow(label: String, stats: StartupStats?) {
+        if (stats == null) return
+        appendLine(
+            "| $label | ${stats.p50Ms?.toString() ?: "—"} ms | " +
+                "${stats.ttfdP50Ms?.toString() ?: "—"} ms | ${stats.severity.badge()} |",
+        )
+    }
+
+    private fun StringBuilder.appendStartupKindBlock(label: String, stats: StartupStats?) {
+        if (stats == null) return
+        appendLine("### $label")
+        appendLine()
+        appendLine("| P50 TTID | P95 TTID | P50 TTFD | Severity |")
+        appendLine("|----------|----------|----------|----------|")
+        appendLine(
+            "| ${stats.p50Ms?.toString() ?: "—"} ms | ${stats.p95Ms?.toString() ?: "—"} ms | " +
+                "${stats.ttfdP50Ms?.toString() ?: "—"} ms | ${stats.severity.badge()} |",
+        )
+        appendLine()
+        appendLine(stats.message)
+        appendLine()
     }
 
     private fun StringBuilder.appendColdStartSummary(cs: ColdStartMeasurement) {
@@ -242,10 +300,15 @@ class MarkdownReporter(private val sourceLinker: SourceLinker? = null) {
             appendLine("| Report generated (local clock) | $timestamp |")
         }
         appendLine("| Overall Severity | ${report.overallSeverity.badge()} |")
-        report.coldStart?.let { cs ->
-            val t = cs.totalTimeMs?.let { "$it ms" } ?: "—"
-            appendLine("| Cold start (TotalTime) | $t |")
+        report.startup?.let { su ->
+            su.cold?.p50Ms?.let { appendLine("| Cold start P50 (TTID) | $it ms |") }
+            su.warm?.p50Ms?.let { appendLine("| Warm start P50 (TTID) | $it ms |") }
+            su.hot?.p50Ms?.let { appendLine("| Hot start P50 (TTID) | $it ms |") }
         }
+            ?: report.coldStart?.let { cs ->
+                val t = cs.totalTimeMs?.let { "$it ms" } ?: "—"
+                appendLine("| Cold start (TotalTime) | $t |")
+            }
         appendLine()
     }
 

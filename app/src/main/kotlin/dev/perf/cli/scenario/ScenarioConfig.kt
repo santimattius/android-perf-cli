@@ -93,6 +93,13 @@ data class EngineConfig(
      * the beginning of the run (before the timed monitoring session).
      */
     val startup: Boolean = false,
+    /**
+     * When [startup] is true, which start kinds to measure (`cold`, `warm`, `hot`).
+     * Empty means cold-only (backward compatible with older scenario JSON).
+     */
+    val startupTypes: List<String> = emptyList(),
+    /** Samples per start type (1–10). Default 3. */
+    val startupSamples: Int = 3,
 )
 
 /**
@@ -111,10 +118,15 @@ data class ThresholdConfig(
     /** Counts heuristic ANR hints with severity WARNING or higher. */
     val maxPotentialAnrHints: Int = 50,
     /**
-     * When non-null and [EngineConfig.startup] produced timings, fails the run
-     * if cold-start `TotalTime` exceeds this value (milliseconds).
+     * When non-null and startup data exists, fails the run if cold-start **P50 (TTID)**
+     * exceeds this value (milliseconds). Legacy reports without [dev.perf.analysis.PerfReport.startup]
+     * fall back to [dev.perf.analysis.model.ColdStartMeasurement.totalTimeMs].
      */
     val maxColdStartMs: Int? = null,
+    /** When set, compared against warm-start P50 from the startup engine. */
+    val maxWarmStartMs: Int? = null,
+    /** When set, compared against hot-start P50 from the startup engine. */
+    val maxHotStartMs: Int? = null,
 )
 
 fun loadScenario(file: File): ScenarioConfig =

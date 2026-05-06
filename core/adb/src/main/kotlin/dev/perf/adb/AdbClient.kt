@@ -23,7 +23,11 @@ interface AdbClient {
      */
     fun shellAllowFailure(vararg args: String): AdbShellResult
 
-    fun stream(vararg args: String, onLine: (String) -> Boolean)
+    /**
+     * Streams output line-by-line via [onLine]. Implementations may suspend
+     * (e.g. cooperative delays in tests); production uses blocking I/O on [Dispatchers.IO].
+     */
+    suspend fun stream(vararg args: String, onLine: (String) -> Boolean)
     fun pull(devicePath: String, destination: File): File
     fun push(source: File, devicePath: String)
     fun install(apk: File, replace: Boolean = true)

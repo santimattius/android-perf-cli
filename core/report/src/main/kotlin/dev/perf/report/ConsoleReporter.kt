@@ -11,6 +11,7 @@ import dev.perf.analysis.model.RenderingIncident
 import dev.perf.analysis.model.Severity
 import dev.perf.analysis.model.StrictModeViolation
 import dev.perf.analysis.model.ColdStartMeasurement
+import dev.perf.analysis.model.startup.StartupReport
 import dev.perf.analysis.model.ThresholdBreach
 import dev.perf.report.source.SourceLinker
 import dev.perf.report.vitals.VitalsPlaybook
@@ -37,7 +38,8 @@ class ConsoleReporter(
     fun print(report: PerfReport, extras: ReportRenderExtras = ReportRenderExtras()) {
         if (!report.hasIssues) {
             terminal.println(green("✔ No performance issues detected."))
-            report.coldStart?.let { printColdStart(it) }
+            report.startup?.let { printStartup(it) }
+                ?: report.coldStart?.let { printColdStart(it) }
             printPerfetto(report)
             printAndroidCliHint(extras)
             return
@@ -49,7 +51,8 @@ class ConsoleReporter(
         terminal.println()
 
         if (report.thresholdBreaches.isNotEmpty()) printThresholdBreaches(report.thresholdBreaches)
-        report.coldStart?.let { printColdStart(it) }
+        report.startup?.let { printStartup(it) }
+            ?: report.coldStart?.let { printColdStart(it) }
         if (report.memoryLeaks.isNotEmpty()) {
             printLeaks(report.memoryLeaks)
             terminal.println(dim("  Vitals: ${VitalsPlaybook.VITALS_HUB}"))
@@ -69,6 +72,15 @@ class ConsoleReporter(
         }
         printPerfetto(report)
         printAndroidCliHint(extras)
+    }
+
+    private fun printStartup(sr: StartupReport) {
+        terminal.println(bold("  Startup (${sr.overallSeverity.name})"))
+        terminal.println(dim("    ${sr.message}"))
+        terminal.println(
+            dim("    Launch: https://developer.android.com/topic/performance/vitals/launch-time"),
+        )
+        terminal.println()
     }
 
     private fun printColdStart(cs: ColdStartMeasurement) {

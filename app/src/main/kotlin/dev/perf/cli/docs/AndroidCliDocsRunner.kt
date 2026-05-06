@@ -36,7 +36,7 @@ class AndroidCliDocsRunner(
         if (report.memoryLeaks.isNotEmpty()) {
             parts += "memory leaks heap"
         }
-        if (report.coldStart != null) {
+        if (report.startup != null || report.coldStart != null) {
             parts += "app startup time cold start"
         }
         return parts.joinToString(" ").take(280)

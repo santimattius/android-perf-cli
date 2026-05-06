@@ -19,6 +19,9 @@ object VitalsPlaybook {
         "",
     )
 
+    /** Same curated links as [coldStartSection]; used by multi-type startup reports. */
+    fun startupSection(): List<String> = coldStartSection()
+
     fun renderingSection(): List<String> = listOf(
         "### Guidance (Vitals: slow rendering)",
         "- Investigate frame budgets, overdraw, and layout inflation on the main thread.",
