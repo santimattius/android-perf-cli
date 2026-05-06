@@ -2,6 +2,7 @@ package dev.perf.analysis
 
 import dev.perf.analysis.model.ColdStartMeasurement
 import dev.perf.analysis.model.MemoryLeak
+import dev.perf.analysis.model.startup.StartupReport
 import dev.perf.analysis.model.PotentialAnrHint
 import dev.perf.analysis.model.ProcSnapshotSummary
 import dev.perf.analysis.model.RenderingIncident
@@ -17,7 +18,13 @@ data class PerfReport(
     val renderingIncident: RenderingIncident,
     val memoryLeaks: List<MemoryLeak>,
     val potentialAnrHints: List<PotentialAnrHint> = emptyList(),
-    /** Cold start metrics when the startup engine ran; null when disabled. */
+    /** Multi-type startup capture (TTID/TTFD); null when the startup engine is disabled. */
+    val startup: StartupReport? = null,
+    /**
+     * Legacy cold-start view derived from [startup] when the new engine runs.
+     * Prefer [startup] for full sample data.
+     */
+    @Deprecated("Use startup.cold instead; this adapter will be removed in a future release.")
     val coldStart: ColdStartMeasurement? = null,
     /**
      * Scenario thresholds that were exceeded for this run (empty if no
@@ -43,8 +50,8 @@ data class PerfReport(
             || renderingIncident.severity != Severity.INFO
             || potentialAnrHints.any { it.severity != Severity.INFO }
             || thresholdBreaches.isNotEmpty()
-            || (coldStart?.severity?.let { it != Severity.INFO } == true)
-            || (wakelockReport?.severity?.let { it != Severity.INFO } == true)
+            || (startup?.overallSeverity?.let { it != Severity.INFO } == true)
+            || (startup == null && coldStart?.severity?.let { it != Severity.INFO } == true) || (wakelockReport?.severity?.let { it != Severity.INFO } == true)
 
     /**
      * Design decision: [Severity] is declared `CRITICAL, WARNING, INFO`
@@ -58,7 +65,8 @@ data class PerfReport(
             strictModeViolations.minOfOrNull { it.severity },
             renderingIncident.severity,
             potentialAnrHints.minOfOrNull { it.severity },
-            coldStart?.severity,
+            startup?.overallSeverity,
+            coldStart?.severity.takeIf { startup == null },
             thresholdBreaches.minOfOrNull { it.severity },
             wakelockReport?.severity,
         ).filterNotNull().minOrNull() ?: Severity.INFO

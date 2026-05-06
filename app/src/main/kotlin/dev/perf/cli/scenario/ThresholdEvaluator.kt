@@ -81,15 +81,34 @@ object ThresholdEvaluator {
             }
 
             val maxCold = thresholds.maxColdStartMs
-            val totalMs = report.coldStart?.totalTimeMs
-            if (maxCold != null && totalMs != null && totalMs > maxCold) {
+            val coldP50 = report.startup?.cold?.p50Ms ?: report.coldStart?.totalTimeMs
+            if (maxCold != null && coldP50 != null && coldP50 > maxCold) {
                 add(
                     ThresholdBreach(
-                        "Cold start TotalTime ${totalMs}ms exceeds threshold of ${maxCold}ms",
+                        "Cold start P50 ${coldP50}ms exceeds threshold of ${maxCold}ms",
                     ),
                 )
             }
 
+            val maxWarm = thresholds.maxWarmStartMs
+            val warmP50 = report.startup?.warm?.p50Ms
+            if (maxWarm != null && warmP50 != null && warmP50 > maxWarm) {
+                add(
+                    ThresholdBreach(
+                        "Warm start P50 ${warmP50}ms exceeds threshold of ${maxWarm}ms",
+                    ),
+                )
+            }
+
+            val maxHot = thresholds.maxHotStartMs
+            val hotP50 = report.startup?.hot?.p50Ms
+            if (maxHot != null && hotP50 != null && hotP50 > maxHot) {
+                add(
+                    ThresholdBreach(
+                        "Hot start P50 ${hotP50}ms exceeds threshold of ${maxHot}ms",
+                    ),
+                )
+            }
             val wl = report.wakelockReport ?: return@buildList
             val maxWakelockMs = thresholds.maxWakelockTimeMs
             if (maxWakelockMs != null && wl.totalDurationMs > maxWakelockMs) {

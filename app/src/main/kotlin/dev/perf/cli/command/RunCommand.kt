@@ -19,7 +19,11 @@ import dev.perf.analysis.perfetto.PerfettoCapture
 import dev.perf.analysis.perfetto.PerfettoRecordResult
 import dev.perf.analysis.perfetto.resolveTracingPreset
 import dev.perf.analysis.proc.ProcSnapshotCapture
+import dev.perf.analysis.model.startup.StartupType
+import dev.perf.analysis.model.startup.toLegacyColdStart
 import dev.perf.analysis.startup.StartupCapture
+import dev.perf.analysis.startup.StartupCaptureConfig
+import dev.perf.analysis.startup.ThresholdsView
 import dev.perf.cli.gradle.GradleBuildRunner
 import dev.perf.cli.config.PerfConfig
 import dev.perf.cli.config.configExists
@@ -28,6 +32,7 @@ import dev.perf.cli.config.saveConfig
 import dev.perf.cli.docs.AndroidCliDocsRunner
 import dev.perf.cli.error.runFriendly
 import dev.perf.cli.sdk.AndroidSdkLocator
+import dev.perf.cli.scenario.EngineConfig
 import dev.perf.cli.scenario.GradleBuildConfig
 import dev.perf.cli.scenario.PerfettoCoverage
 import dev.perf.cli.scenario.ScenarioConfig
@@ -235,18 +240,26 @@ class RunCommand : CliktCommand(
                         null
                     }
 
-                val coldStartMeasurement =
+                val startupReport =
                     if (mergedStartup) {
-                        echo("→ Measuring cold start (am force-stop + am start -W)…")
+                        val typeLabel =
+                            if (resolved.engines.startupTypes.isEmpty()) {
+                                "cold"
+                            } else {
+                                resolved.engines.startupTypes.joinToString(", ")
+                            }
+                        val samples = resolved.engines.startupSamples.coerceIn(1, 10)
+                        echo("→ Measuring startup ($typeLabel, $samples samples/type)…")
                         delay(400)
                         withContext(Dispatchers.IO) {
-                            StartupCapture.measureColdStart(device, packageName, activityComponent)
+                            val cfg = buildStartupCaptureConfig(scenarioConfig, resolved.engines)
+                            StartupCapture(device).capture(packageName, activityComponent, cfg)
                         }
                     } else {
                         null
                     }
 
-                if (coldStartMeasurement != null) {
+                if (startupReport != null) {
                     delay(300)
                 }
 
@@ -319,8 +332,12 @@ class RunCommand : CliktCommand(
 
                 var report = reportBeforeSidecars.copy(procSnapshot = procSnapshot)
 
-                if (coldStartMeasurement != null) {
-                    report = report.copy(coldStart = coldStartMeasurement)
+                if (startupReport != null) {
+                    report =
+                        report.copy(
+                            startup = startupReport,
+                            coldStart = startupReport.cold?.toLegacyColdStart(),
+                        )
                 }
 
                 if (resolved.screenshotsEnabled) {
@@ -502,4 +519,37 @@ class RunCommand : CliktCommand(
         data class Ok(val file: File, val degraded: Boolean = false) : PerfettoOutcome()
         data class Skipped(val reason: String) : PerfettoOutcome()
     }
+}
+
+private fun buildStartupCaptureConfig(
+    scenarioConfig: ScenarioConfig?,
+    engines: EngineConfig,
+): StartupCaptureConfig {
+    val th = scenarioConfig?.thresholds ?: ThresholdConfig()
+    val types =
+        if (engines.startupTypes.isEmpty()) {
+            setOf(StartupType.COLD)
+        } else {
+            engines.startupTypes
+                .mapNotNull { w ->
+                    when (w.lowercase()) {
+                        "cold" -> StartupType.COLD
+                        "warm" -> StartupType.WARM
+                        "hot" -> StartupType.HOT
+                        else -> null
+                    }
+                }
+                .toSet()
+                .ifEmpty { setOf(StartupType.COLD) }
+        }
+    return StartupCaptureConfig(
+        startupTypes = types,
+        samplesPerType = engines.startupSamples.coerceIn(1, 10),
+        thresholds =
+            ThresholdsView(
+                maxColdStartMs = th.maxColdStartMs,
+                maxWarmStartMs = th.maxWarmStartMs,
+                maxHotStartMs = th.maxHotStartMs,
+            ),
+    )
 }

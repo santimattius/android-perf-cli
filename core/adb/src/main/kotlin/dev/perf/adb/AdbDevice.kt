@@ -119,7 +119,7 @@ class AdbDevice(
      * commands like logcat. Blocks until the process exits or [onLine] returns
      * false (which kills the process).
      */
-    override fun stream(vararg args: String, onLine: (String) -> Boolean) {
+    override suspend fun stream(vararg args: String, onLine: (String) -> Boolean) {
         val command = buildList {
             add(adbPath)
             add("-s")
@@ -127,18 +127,20 @@ class AdbDevice(
             addAll(args)
         }
 
-        val process = ProcessBuilder(command)
-            .redirectErrorStream(true)
-            .start()
+        withContext(Dispatchers.IO) {
+            val process = ProcessBuilder(command)
+                .redirectErrorStream(true)
+                .start()
 
-        try {
-            process.inputStream.bufferedReader().use { reader ->
-                for (line in reader.lines()) {
-                    if (!onLine(line)) break
+            try {
+                process.inputStream.bufferedReader().use { reader ->
+                    for (line in reader.lines()) {
+                        if (!onLine(line)) break
+                    }
                 }
+            } finally {
+                process.destroyForcibly()
             }
-        } finally {
-            process.destroyForcibly()
         }
     }
 
