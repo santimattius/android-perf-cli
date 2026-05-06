@@ -2,6 +2,7 @@ package dev.perf.analysis
 
 import dev.perf.adb.AdbClient
 import dev.perf.analysis.gfx.GfxInfoCapture
+import dev.perf.analysis.wakelock.WakelockCapture
 import dev.perf.analysis.logcat.LogcatParser
 import dev.perf.analysis.logcat.SessionLogcatEvent
 import dev.perf.analysis.memory.HeapAnalyzer
@@ -35,6 +36,7 @@ class PerfWatchdog(
     )
     private val gfxCapture = GfxInfoCapture(device)
     private val heapAnalyzer = HeapAnalyzer(device)
+    private val wakelockCapture = WakelockCapture(device)
 
     private val _incidents = MutableSharedFlow<PerfIncident>(extraBufferCapacity = 512)
     val incidents: SharedFlow<PerfIncident> = _incidents.asSharedFlow()
@@ -46,6 +48,9 @@ class PerfWatchdog(
     fun start() {
         if (monitor.rendering) {
             device.shell("dumpsys", "gfxinfo", packageName, "reset")
+        }
+        if (monitor.wakelocks) {
+            wakelockCapture.reset(packageName)
         }
 
         if (!monitor.strictMode && !monitor.anrHints) {
@@ -83,8 +88,15 @@ class PerfWatchdog(
             null
         }
 
+        val wakelockDeferred = if (monitor.wakelocks) {
+            scope.async { wakelockCapture.capture(packageName) }
+        } else {
+            null
+        }
+
         val rendering = renderingDeferred?.await() ?: disabledRenderingPlaceholder()
         val leaks = leaksDeferred?.await() ?: emptyList()
+        val wakelocks = wakelockDeferred?.await()
 
         val strictFinal = collectedStrict.toList()
         val anrFinal = dedupeAnrHints(collectedAnr)
@@ -95,6 +107,7 @@ class PerfWatchdog(
             renderingIncident = rendering,
             memoryLeaks = leaks,
             potentialAnrHints = anrFinal,
+            wakelockReport = wakelocks,
         )
     }
 

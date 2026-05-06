@@ -8,6 +8,7 @@ import dev.perf.analysis.model.RenderingIncident
 import dev.perf.analysis.model.Severity
 import dev.perf.analysis.model.StrictModeViolation
 import dev.perf.analysis.model.ThresholdBreach
+import dev.perf.analysis.model.WakelockReport
 import java.io.File
 
 data class PerfReport(
@@ -33,6 +34,8 @@ data class PerfReport(
     val procSnapshot: ProcSnapshotSummary? = null,
     /** Paths relative to report file (or labels) for screenshots taken during the run. */
     val screenshotArtifacts: List<String> = emptyList(),
+    /** Partial wake-lock stats when the wakelock engine ran; null when disabled or capture failed. */
+    val wakelockReport: WakelockReport? = null,
 ) {
     val hasIssues: Boolean
         get() = strictModeViolations.isNotEmpty()
@@ -41,6 +44,7 @@ data class PerfReport(
             || potentialAnrHints.any { it.severity != Severity.INFO }
             || thresholdBreaches.isNotEmpty()
             || (coldStart?.severity?.let { it != Severity.INFO } == true)
+            || (wakelockReport?.severity?.let { it != Severity.INFO } == true)
 
     /**
      * Design decision: [Severity] is declared `CRITICAL, WARNING, INFO`
@@ -56,5 +60,6 @@ data class PerfReport(
             potentialAnrHints.minOfOrNull { it.severity },
             coldStart?.severity,
             thresholdBreaches.minOfOrNull { it.severity },
+            wakelockReport?.severity,
         ).filterNotNull().minOrNull() ?: Severity.INFO
 }
