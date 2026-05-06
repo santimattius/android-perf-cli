@@ -15,6 +15,7 @@ Designed for **local debugging** and **CI**: JSON **scenarios** can define **`pr
 | **StrictMode** | Disk/network-on-main-thread and other StrictMode issues from logcat (package PID scoped). |
 | **ANR hints (heuristic)** | Logcat-based signals (e.g. skipped frames, slow dispatch) — **not** a substitute for Vitals ANR rates or real ANRs. |
 | **Cold start** | Optional **`am force-stop`** + **`am start -W`**; threshold **`maxColdStartMs`** in scenarios. |
+| **Wake locks (optional)** | Opt-in partial wake locks via **`dumpsys batterystats`** (see **`--wakelocks`** and scenario **`engines.wakelocks`**). Runs a destructive **`batterystats --reset`** at session start (clears **system-wide** battery stats). Thresholds **`maxWakelockTimeMs`** / **`maxWakelockCount`**; a **`## Wake Locks`** table in the Markdown report. **`--full`** / **`"profile":"full"`** turns wake locks on with the other heavy engines. |
 | **Perfetto (optional)** | Presets **`default`**, **`vitals`** (+fallback), or **`custom`** categories; coverage **`session`** or **`startup`**. Opens in [Perfetto UI](https://ui.perfetto.dev). |
 | **Heap (optional)** | Heap dump end-of-session + Shark analysis (debuggable builds / permissions permitting). |
 | **Process snapshot** | Optional **`dumpsys meminfo`** excerpt + thread count (`/proc/.../status`). |
@@ -97,6 +98,7 @@ Notable **`perf run`** flags (see **`run --help`** and [INSTALL.md](INSTALL.md) 
 | `--build-variant debug\|release` | With `--project-dir`, run `assemble*` before install (mutually exclusive with `--apk`). |
 | `--apk` | Install this APK instead of Gradle output. |
 | `--perfetto`, `--startup`, `--activity`, `--heap` | Shortcut toggles when not using JSON overrides. |
+| `--wakelocks` | When **no** `--scenario` is used, enables wake-lock capture (otherwise set **`"engines": { "wakelocks": true }`** in JSON). Implies **`dumpsys batterystats --reset`** at the start of the monitor window — see **Wake locks** row above. |
 | `--artifacts-dir` | Directory for screenshots and pulled Perfetto files. |
 | `--serial`, `--skip-emulator`, `--emulator-headless` | Device / emulator control. |
 
@@ -104,7 +106,7 @@ Notable **`perf run`** flags (see **`run --help`** and [INSTALL.md](INSTALL.md) 
 
 ## CI and scenarios
 
-Define engines, optional **`profile`** / Perfetto keys, **`workflow`**, **`build`**, and **thresholds** in JSON.
+Define engines, optional **`profile`** / Perfetto keys, **`workflow`**, **`build`**, and **thresholds** in JSON. Optional wake-lock keys: **`engines.wakelocks`**, **`thresholds.maxWakelockTimeMs`**, **`thresholds.maxWakelockCount`** (see [example-scenario.json](scenarios/example-scenario.json) and [example-full.json](scenarios/example-full.json)).
 
 ```bash
 perf run --package com.example.app.debug --scenario scenarios/example-scenario.json

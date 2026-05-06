@@ -8,6 +8,8 @@ import dev.perf.analysis.model.Severity
 import dev.perf.analysis.model.StrictModeViolation
 import dev.perf.analysis.model.StrictModeViolation.ViolationType
 import dev.perf.analysis.model.ThresholdBreach
+import dev.perf.analysis.model.WakelockEntry
+import dev.perf.analysis.model.WakelockReport
 import dev.perf.report.ReportRenderExtras
 import dev.perf.report.source.SourceLinker
 import dev.perf.report.vitals.VitalsPlaybook
@@ -46,6 +48,21 @@ class MarkdownReporterTest {
         assertFalse(output.contains("## Memory Leaks"))
         assertFalse(output.contains("## StrictMode"))
         assertFalse(output.contains("## Rendering"))
+    }
+
+    @Test
+    fun `renders wake locks table when wakelockReport is present`() {
+        val wl =
+            WakelockReport(
+                entries = listOf(WakelockEntry("*alarm*", 1, 5000)),
+                totalDurationMs = 5000,
+                severity = Severity.WARNING,
+            )
+        val output = MarkdownReporter().render(cleanReport().copy(wakelockReport = wl))
+
+        assertContains(output, "## Wake Locks")
+        assertContains(output, "*alarm*")
+        assertContains(output, "5000")
     }
 
     // ── Header ────────────────────────────────────────────────────────────────

@@ -9,4 +9,9 @@ data class MonitorConfig(
     val rendering: Boolean = true,
     /** When true, `RunCommand` measures cold start (`am force-stop` + `am start -W`) before the timed session. */
     val startup: Boolean = false,
+    /**
+     * When true, issues `dumpsys batterystats --reset` at session start and parses
+     * partial wake locks at end (destructive — clears system battery stats).
+     */
+    val wakelocks: Boolean = false,
 )

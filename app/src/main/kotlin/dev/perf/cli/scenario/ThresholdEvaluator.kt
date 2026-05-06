@@ -3,6 +3,7 @@ package dev.perf.cli.scenario
 import dev.perf.analysis.PerfReport
 import dev.perf.analysis.model.Severity
 import dev.perf.analysis.model.ThresholdBreach
+import dev.perf.analysis.model.WakelockReport
 
 /**
  * Applies [ThresholdConfig] against a [PerfReport] and returns a list of
@@ -20,6 +21,22 @@ import dev.perf.analysis.model.ThresholdBreach
  */
 object ThresholdEvaluator {
 
+    /**
+     * Computes threshold breaches and annotates [PerfReport.wakelockReport.severity]
+     * when the wake-lock engine produced a report.
+     */
+    fun applyToReport(report: PerfReport, thresholds: ThresholdConfig): PerfReport {
+        val breaches = evaluate(report, thresholds)
+        val wl =
+            report.wakelockReport?.let { base ->
+                base.copy(severity = wakelockSeverity(base, breaches))
+            }
+        return report.copy(
+            thresholdBreaches = breaches,
+            wakelockReport = wl ?: report.wakelockReport,
+        )
+    }
+
     fun evaluate(report: PerfReport, thresholds: ThresholdConfig): List<ThresholdBreach> =
         buildList {
             val rendering = report.renderingIncident
@@ -31,8 +48,8 @@ object ThresholdEvaluator {
                     add(
                         ThresholdBreach(
                             "Janky frame rate %.1f%% exceeds threshold of %.1f%%"
-                                .format(jankyPercent, thresholds.maxJankyPercent)
-                        )
+                                .format(jankyPercent, thresholds.maxJankyPercent),
+                        ),
                     )
                 }
             }
@@ -40,8 +57,8 @@ object ThresholdEvaluator {
             if (rendering.frozenFrames > thresholds.maxFrozenFrames) {
                 add(
                     ThresholdBreach(
-                        "Frozen frames ${rendering.frozenFrames} exceeds threshold of ${thresholds.maxFrozenFrames}"
-                    )
+                        "Frozen frames ${rendering.frozenFrames} exceeds threshold of ${thresholds.maxFrozenFrames}",
+                    ),
                 )
             }
 
@@ -49,8 +66,8 @@ object ThresholdEvaluator {
                 add(
                     ThresholdBreach(
                         "StrictMode violations ${report.strictModeViolations.size} " +
-                            "exceeds threshold of ${thresholds.maxStrictModeViolations}"
-                    )
+                            "exceeds threshold of ${thresholds.maxStrictModeViolations}",
+                    ),
                 )
             }
 
@@ -58,8 +75,8 @@ object ThresholdEvaluator {
             if (anrRiskCount > thresholds.maxPotentialAnrHints) {
                 add(
                     ThresholdBreach(
-                        "Potential ANR-risk log signals ($anrRiskCount) exceed threshold of ${thresholds.maxPotentialAnrHints}"
-                    )
+                        "Potential ANR-risk log signals ($anrRiskCount) exceed threshold of ${thresholds.maxPotentialAnrHints}",
+                    ),
                 )
             }
 
@@ -69,8 +86,38 @@ object ThresholdEvaluator {
                 add(
                     ThresholdBreach(
                         "Cold start TotalTime ${totalMs}ms exceeds threshold of ${maxCold}ms",
-                    )
+                    ),
+                )
+            }
+
+            val wl = report.wakelockReport ?: return@buildList
+            val maxWakelockMs = thresholds.maxWakelockTimeMs
+            if (maxWakelockMs != null && wl.totalDurationMs > maxWakelockMs) {
+                add(
+                    ThresholdBreach(
+                        "Wake lock total duration ${wl.totalDurationMs}ms exceeds threshold of ${maxWakelockMs}ms",
+                    ),
+                )
+            }
+            val maxCount = thresholds.maxWakelockCount
+            if (maxCount != null && wl.entries.size > maxCount) {
+                add(
+                    ThresholdBreach(
+                        "Wake lock entry count ${wl.entries.size} exceeds threshold of $maxCount",
+                    ),
                 )
             }
         }
+
+    private fun wakelockSeverity(base: WakelockReport, breaches: List<ThresholdBreach>): Severity {
+        if (base.entries.isEmpty()) {
+            return Severity.INFO
+        }
+        val wakelockBreached =
+            breaches.any {
+                it.message.startsWith("Wake lock total duration") ||
+                    it.message.startsWith("Wake lock entry count")
+            }
+        return if (wakelockBreached) Severity.CRITICAL else Severity.WARNING
+    }
 }
