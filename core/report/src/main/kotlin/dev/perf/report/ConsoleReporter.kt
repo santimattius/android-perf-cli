@@ -13,6 +13,7 @@ import dev.perf.analysis.model.StrictModeViolation
 import dev.perf.analysis.model.ColdStartMeasurement
 import dev.perf.analysis.model.startup.StartupReport
 import dev.perf.analysis.model.ThresholdBreach
+import dev.perf.analysis.model.WakelockReport
 import dev.perf.report.source.SourceLinker
 import dev.perf.report.vitals.VitalsPlaybook
 import dev.perf.report.source.StackFrameParser
@@ -40,6 +41,7 @@ class ConsoleReporter(
             terminal.println(green("✔ No performance issues detected."))
             report.startup?.let { printStartup(it) }
                 ?: report.coldStart?.let { printColdStart(it) }
+            report.wakelockReport?.let { printWakelocks(it) }
             printPerfetto(report)
             printAndroidCliHint(extras)
             return
@@ -53,6 +55,7 @@ class ConsoleReporter(
         if (report.thresholdBreaches.isNotEmpty()) printThresholdBreaches(report.thresholdBreaches)
         report.startup?.let { printStartup(it) }
             ?: report.coldStart?.let { printColdStart(it) }
+        report.wakelockReport?.let { printWakelocks(it) }
         if (report.memoryLeaks.isNotEmpty()) {
             printLeaks(report.memoryLeaks)
             terminal.println(dim("  Vitals: ${VitalsPlaybook.VITALS_HUB}"))
@@ -80,6 +83,34 @@ class ConsoleReporter(
         terminal.println(
             dim("    Launch: https://developer.android.com/topic/performance/vitals/launch-time"),
         )
+        terminal.println()
+    }
+
+    private fun printWakelocks(w: WakelockReport) {
+        terminal.println()
+        terminal.println(
+            bold(
+                "  Wake locks (${w.entries.size} locks, %.1f s total, %s)"
+                    .format(w.totalDurationMs / 1000.0, w.severity.name),
+            ),
+        )
+        if (w.entries.isNotEmpty()) {
+            terminal.println(
+                terminal.render(
+                    table {
+                        header { row("Name", "Count", "Duration (ms)") }
+                        body {
+                            w.entries.take(5).forEach { e ->
+                                row(e.name.take(48), e.count.toString(), e.totalDurationMs.toString())
+                            }
+                        }
+                    },
+                ),
+            )
+            if (w.entries.size > 5) {
+                terminal.println(dim("    … ${w.entries.size - 5} more"))
+            }
+        }
         terminal.println()
     }
 

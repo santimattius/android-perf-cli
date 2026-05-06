@@ -141,6 +141,11 @@ class RunCommand : CliktCommand(
         help = "Heavy profile when no `--scenario`: heap+perfetto+startup, Vitals preset, snapshots, screenshots, longer duration.",
     ).flag(default = false)
 
+    private val wakelocksFlag: Boolean by option(
+        "--wakelocks",
+        help = "Measure partial wake locks via dumpsys batterystats (runs destructive `batterystats --reset` at session start).",
+    ).flag(default = false)
+
     private val artifactsDir: File? by option(
         "--artifacts-dir",
         help = "Store screenshots and pulled trace here (default: directory next to `-o`).",
@@ -162,6 +167,7 @@ class RunCommand : CliktCommand(
             val mergedHeap = resolved.engines.heap || (scenarioConfig == null && analyzeHeap)
             val mergedPerfetto = resolved.engines.perfetto || (scenarioConfig == null && perfettoFlag)
             val mergedStartup = resolved.engines.startup || (scenarioConfig == null && startupFlag)
+            val mergedWakelocks = resolved.engines.wakelocks || (scenarioConfig == null && wakelocksFlag)
 
             val presetEnum =
                 resolveTracingPreset(
@@ -259,6 +265,12 @@ class RunCommand : CliktCommand(
 
                 val label = scenarioConfig?.name ?: "ad-hoc"
                 echo("→ Scenario \"$label\" for $packageName (${effectiveDurationSeconds}s monitoring)…")
+                if (mergedWakelocks) {
+                    echo(
+                        "⚠ Wake locks: `dumpsys batterystats --reset` runs at session start " +
+                            "(clears system-wide battery stats).",
+                    )
+                }
 
                 val screenshotArtifacts = mutableListOf<String>()
                 val wfShotFiles = mutableListOf<File>()
@@ -299,6 +311,7 @@ class RunCommand : CliktCommand(
                     anrHints = resolved.engines.anrHints,
                     rendering = resolved.engines.rendering,
                     startup = mergedStartup,
+                    wakelocks = mergedWakelocks,
                 )
 
                 val monitorStartedAt = Instant.now()

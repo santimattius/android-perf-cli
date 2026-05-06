@@ -71,6 +71,7 @@ fun resolveRunParameters(
                 heap = true,
                 perfetto = true,
                 startup = true,
+                wakelocks = true,
             )
         } else {
             scenario.engines

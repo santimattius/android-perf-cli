@@ -3,6 +3,7 @@ package dev.perf.cli.scenario
 import dev.perf.analysis.PerfReport
 import dev.perf.analysis.model.Severity
 import dev.perf.analysis.model.ThresholdBreach
+import dev.perf.analysis.model.WakelockReport
 
 /**
  * Applies [ThresholdConfig] against a [PerfReport] and returns a list of
@@ -20,9 +21,20 @@ import dev.perf.analysis.model.ThresholdBreach
  */
 object ThresholdEvaluator {
 
+    /**
+     * Computes threshold breaches and annotates [PerfReport.wakelockReport.severity]
+     * when the wake-lock engine produced a report.
+     */
     fun applyToReport(report: PerfReport, thresholds: ThresholdConfig): PerfReport {
         val breaches = evaluate(report, thresholds)
-        return report.copy(thresholdBreaches = breaches)
+        val wl =
+            report.wakelockReport?.let { base ->
+                base.copy(severity = wakelockSeverity(base, breaches))
+            }
+        return report.copy(
+            thresholdBreaches = breaches,
+            wakelockReport = wl ?: report.wakelockReport,
+        )
     }
 
     fun evaluate(report: PerfReport, thresholds: ThresholdConfig): List<ThresholdBreach> =
@@ -97,5 +109,34 @@ object ThresholdEvaluator {
                     ),
                 )
             }
+            val wl = report.wakelockReport ?: return@buildList
+            val maxWakelockMs = thresholds.maxWakelockTimeMs
+            if (maxWakelockMs != null && wl.totalDurationMs > maxWakelockMs) {
+                add(
+                    ThresholdBreach(
+                        "Wake lock total duration ${wl.totalDurationMs}ms exceeds threshold of ${maxWakelockMs}ms",
+                    ),
+                )
+            }
+            val maxCount = thresholds.maxWakelockCount
+            if (maxCount != null && wl.entries.size > maxCount) {
+                add(
+                    ThresholdBreach(
+                        "Wake lock entry count ${wl.entries.size} exceeds threshold of $maxCount",
+                    ),
+                )
+            }
         }
+
+    private fun wakelockSeverity(base: WakelockReport, breaches: List<ThresholdBreach>): Severity {
+        if (base.entries.isEmpty()) {
+            return Severity.INFO
+        }
+        val wakelockBreached =
+            breaches.any {
+                it.message.startsWith("Wake lock total duration") ||
+                    it.message.startsWith("Wake lock entry count")
+            }
+        return if (wakelockBreached) Severity.CRITICAL else Severity.WARNING
+    }
 }

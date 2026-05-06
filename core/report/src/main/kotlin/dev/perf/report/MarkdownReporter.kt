@@ -10,6 +10,7 @@ import dev.perf.analysis.model.RenderingIncident
 import dev.perf.analysis.model.Severity
 import dev.perf.analysis.model.StrictModeViolation
 import dev.perf.analysis.model.ThresholdBreach
+import dev.perf.analysis.model.WakelockReport
 import dev.perf.report.source.SourceLinker
 import dev.perf.report.source.StackFrameParser
 import dev.perf.report.vitals.VitalsPlaybook
@@ -45,6 +46,7 @@ class MarkdownReporter(private val sourceLinker: SourceLinker? = null) {
             appendLine("> No performance issues detected. Ship it.")
             report.startup?.let { appendStartupSummary(it) }
                 ?: report.coldStart?.let { appendColdStartSummary(it) }
+            report.wakelockReport?.let { appendWakelocksSection(it) }
             report.perfettoTraceFile?.let {
                 appendLine()
                 appendLine("### Perfetto trace")
@@ -60,6 +62,7 @@ class MarkdownReporter(private val sourceLinker: SourceLinker? = null) {
         }
 
         if (report.thresholdBreaches.isNotEmpty()) appendThresholdBreaches(report.thresholdBreaches)
+        report.wakelockReport?.let { appendWakelocksSection(it) }
         report.startup?.let { appendStartupSection(it) }
             ?: report.coldStart?.let { appendColdStartSection(it) }
         if (report.memoryLeaks.isNotEmpty()) {
@@ -184,6 +187,24 @@ class MarkdownReporter(private val sourceLinker: SourceLinker? = null) {
         appendLine("```text")
         appendLine(snippet)
         appendLine("```")
+        appendLine()
+    }
+
+    private fun StringBuilder.appendWakelocksSection(w: WakelockReport) {
+        appendLine("## Wake Locks")
+        appendLine()
+        appendLine("| Name | Count | Duration (ms) |")
+        appendLine("|------|-------|-----------------|")
+        if (w.entries.isEmpty()) {
+            appendLine("| — | 0 | 0 |")
+        } else {
+            w.entries.forEach { e ->
+                val safeName = e.name.replace("|", "\\|")
+                appendLine("| `$safeName` | ${e.count} | ${e.totalDurationMs} |")
+            }
+        }
+        appendLine()
+        appendLine("_Total ${w.totalDurationMs} ms — ${w.severity.badge()}_")
         appendLine()
     }
 

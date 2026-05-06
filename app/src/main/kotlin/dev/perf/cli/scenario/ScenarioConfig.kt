@@ -49,7 +49,8 @@ data class WorkflowStep(
  *     "heap": false,
  *     "anrHints": true,
  *     "perfetto": false,
- *     "startup": false
+ *     "startup": false,
+ *     "wakelocks": false
  *   },
  *   "thresholds": {
  *     "maxJankyPercent": 2.0,
@@ -100,6 +101,8 @@ data class EngineConfig(
     val startupTypes: List<String> = emptyList(),
     /** Samples per start type (1–10). Default 3. */
     val startupSamples: Int = 3,
+    /** Partial wake locks via `dumpsys batterystats` (issues a destructive `--reset` at session start). */
+    val wakelocks: Boolean = false,
 )
 
 /**
@@ -127,6 +130,10 @@ data class ThresholdConfig(
     val maxWarmStartMs: Int? = null,
     /** When set, compared against hot-start P50 from the startup engine. */
     val maxHotStartMs: Int? = null,
+    /** Breach when summed partial wake-lock duration exceeds this (milliseconds). */
+    val maxWakelockTimeMs: Long? = null,
+    /** Breach when the number of distinct partial wake-lock rows exceeds this. */
+    val maxWakelockCount: Int? = null,
 )
 
 fun loadScenario(file: File): ScenarioConfig =

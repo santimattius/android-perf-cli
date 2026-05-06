@@ -6,6 +6,8 @@ import dev.perf.analysis.model.MemoryLeak
 import dev.perf.analysis.model.RenderingIncident
 import dev.perf.analysis.model.Severity
 import dev.perf.analysis.model.StrictModeViolation
+import dev.perf.analysis.model.WakelockEntry
+import dev.perf.analysis.model.WakelockReport
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -156,6 +158,68 @@ class ThresholdEvaluatorTest {
         assertEquals(1, breaches.size)
         assertTrue(breaches.first().message.contains("3000"))
         assertTrue(breaches.first().message.contains("2500"))
+    }
+
+    @Test
+    fun `reports breach when wake lock total duration exceeds threshold`() {
+        val wl =
+            WakelockReport(
+                entries = listOf(WakelockEntry("a", 1, 4000)),
+                totalDurationMs = 4000,
+            )
+        val report = reportWith().copy(wakelockReport = wl)
+        val breaches = ThresholdEvaluator.evaluate(report, ThresholdConfig(maxWakelockTimeMs = 3000))
+        assertEquals(1, breaches.size)
+        assertEquals(true, breaches.first().message.contains("4000"))
+    }
+
+    @Test
+    fun `reports breach when wake lock entry count exceeds threshold`() {
+        val wl =
+            WakelockReport(
+                entries =
+                    listOf(
+                        WakelockEntry("a", 1, 1),
+                        WakelockEntry("b", 1, 1),
+                        WakelockEntry("c", 1, 1),
+                    ),
+                totalDurationMs = 3,
+            )
+        val report = reportWith().copy(wakelockReport = wl)
+        val breaches = ThresholdEvaluator.evaluate(report, ThresholdConfig(maxWakelockCount = 2))
+        assertEquals(1, breaches.size)
+        assertEquals(true, breaches.first().message.contains("3"))
+    }
+
+    @Test
+    fun `applyToReport sets wakelock severity to WARNING when entries exist and no breach`() {
+        val wl =
+            WakelockReport(
+                entries = listOf(WakelockEntry("a", 1, 100)),
+                totalDurationMs = 100,
+            )
+        val out =
+            ThresholdEvaluator.applyToReport(
+                reportWith().copy(wakelockReport = wl),
+                ThresholdConfig(maxWakelockTimeMs = null, maxWakelockCount = null),
+            )
+        assertEquals(Severity.WARNING, out.wakelockReport?.severity)
+    }
+
+    @Test
+    fun `applyToReport sets wakelock severity to CRITICAL when duration threshold breached`() {
+        val wl =
+            WakelockReport(
+                entries = listOf(WakelockEntry("a", 1, 5000)),
+                totalDurationMs = 5000,
+            )
+        val out =
+            ThresholdEvaluator.applyToReport(
+                reportWith().copy(wakelockReport = wl),
+                ThresholdConfig(maxWakelockTimeMs = 3000),
+            )
+        assertEquals(Severity.CRITICAL, out.wakelockReport?.severity)
+        assertEquals(true, out.thresholdBreaches.any { it.message.startsWith("Wake lock total duration") })
     }
 
     @Test
