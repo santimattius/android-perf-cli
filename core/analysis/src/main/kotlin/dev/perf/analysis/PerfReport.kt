@@ -9,6 +9,7 @@ import dev.perf.analysis.model.RenderingIncident
 import dev.perf.analysis.model.Severity
 import dev.perf.analysis.model.StrictModeViolation
 import dev.perf.analysis.model.ThresholdBreach
+import dev.perf.analysis.model.ExitSignalReport
 import dev.perf.analysis.model.WakelockReport
 import java.io.File
 
@@ -43,6 +44,8 @@ data class PerfReport(
     val screenshotArtifacts: List<String> = emptyList(),
     /** Partial wake-lock stats when the wakelock engine ran; null when disabled or capture failed. */
     val wakelockReport: WakelockReport? = null,
+    /** Confirmed process exits (ANR/Crash/LMK) from streaming logcat; null when disabled. */
+    val exitSignalReport: ExitSignalReport? = null,
 ) {
     val hasIssues: Boolean
         get() = strictModeViolations.isNotEmpty()
@@ -51,7 +54,9 @@ data class PerfReport(
             || potentialAnrHints.any { it.severity != Severity.INFO }
             || thresholdBreaches.isNotEmpty()
             || (startup?.overallSeverity?.let { it != Severity.INFO } == true)
-            || (startup == null && coldStart?.severity?.let { it != Severity.INFO } == true) || (wakelockReport?.severity?.let { it != Severity.INFO } == true)
+            || (startup == null && coldStart?.severity?.let { it != Severity.INFO } == true)
+            || (wakelockReport?.severity?.let { it != Severity.INFO } == true)
+            || (exitSignalReport?.hasExits == true)
 
     /**
      * Design decision: [Severity] is declared `CRITICAL, WARNING, INFO`
@@ -69,5 +74,6 @@ data class PerfReport(
             coldStart?.severity.takeIf { startup == null },
             thresholdBreaches.minOfOrNull { it.severity },
             wakelockReport?.severity,
+            exitSignalReport?.severity,
         ).filterNotNull().minOrNull() ?: Severity.INFO
 }

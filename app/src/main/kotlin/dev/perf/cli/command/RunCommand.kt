@@ -146,6 +146,11 @@ class RunCommand : CliktCommand(
         help = "Measure partial wake locks via dumpsys batterystats (runs destructive `batterystats --reset` at session start).",
     ).flag(default = false)
 
+    private val exitSignalsFlag: Boolean by option(
+        "--exit-signals",
+        help = "Detect confirmed ANR, crash, and LMK events via logcat stream. Any confirmed exit fails the run.",
+    ).flag(default = false)
+
     private val artifactsDir: File? by option(
         "--artifacts-dir",
         help = "Store screenshots and pulled trace here (default: directory next to `-o`).",
@@ -168,6 +173,7 @@ class RunCommand : CliktCommand(
             val mergedPerfetto = resolved.engines.perfetto || (scenarioConfig == null && perfettoFlag)
             val mergedStartup = resolved.engines.startup || (scenarioConfig == null && startupFlag)
             val mergedWakelocks = resolved.engines.wakelocks || (scenarioConfig == null && wakelocksFlag)
+            val mergedExitSignals = resolved.engines.exitSignals || (scenarioConfig == null && exitSignalsFlag)
 
             val presetEnum =
                 resolveTracingPreset(
@@ -312,6 +318,7 @@ class RunCommand : CliktCommand(
                     rendering = resolved.engines.rendering,
                     startup = mergedStartup,
                     wakelocks = mergedWakelocks,
+                    exitSignals = mergedExitSignals,
                 )
 
                 val monitorStartedAt = Instant.now()

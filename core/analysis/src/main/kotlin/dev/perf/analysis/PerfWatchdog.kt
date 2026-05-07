@@ -1,11 +1,13 @@
 package dev.perf.analysis
 
 import dev.perf.adb.AdbClient
+import dev.perf.analysis.exit.ExitSignalCapture
 import dev.perf.analysis.gfx.GfxInfoCapture
 import dev.perf.analysis.wakelock.WakelockCapture
 import dev.perf.analysis.logcat.LogcatParser
 import dev.perf.analysis.logcat.SessionLogcatEvent
 import dev.perf.analysis.memory.HeapAnalyzer
+import dev.perf.analysis.model.ExitSignalReport
 import dev.perf.analysis.model.PerfIncident
 import dev.perf.analysis.model.PotentialAnrHint
 import dev.perf.analysis.model.RenderingIncident
@@ -15,6 +17,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -37,6 +40,7 @@ class PerfWatchdog(
     private val gfxCapture = GfxInfoCapture(device)
     private val heapAnalyzer = HeapAnalyzer(device)
     private val wakelockCapture = WakelockCapture(device)
+    private val exitSignalCapture = ExitSignalCapture(device)
 
     private val _incidents = MutableSharedFlow<PerfIncident>(extraBufferCapacity = 512)
     val incidents: SharedFlow<PerfIncident> = _incidents.asSharedFlow()
@@ -44,6 +48,8 @@ class PerfWatchdog(
     private val collectedStrict = mutableListOf<StrictModeViolation>()
     private val collectedAnr = mutableListOf<PotentialAnrHint>()
     private var logcatJob: Job? = null
+    private var exitSignalJob: Job? = null
+    private var exitSignalResult: ExitSignalReport? = null
 
     fun start() {
         if (monitor.rendering) {
@@ -51,6 +57,11 @@ class PerfWatchdog(
         }
         if (monitor.wakelocks) {
             wakelockCapture.reset(packageName)
+        }
+        if (monitor.exitSignals) {
+            exitSignalJob = scope.launch {
+                exitSignalResult = exitSignalCapture.capture(packageName, 0L)
+            }
         }
 
         if (!monitor.strictMode && !monitor.anrHints) {
@@ -74,6 +85,7 @@ class PerfWatchdog(
     }
 
     suspend fun stop(analyzeHeap: Boolean = false): PerfReport {
+        exitSignalJob?.cancelAndJoin()
         logcatJob?.cancel()
 
         val renderingDeferred = if (monitor.rendering) {
@@ -108,6 +120,7 @@ class PerfWatchdog(
             memoryLeaks = leaks,
             potentialAnrHints = anrFinal,
             wakelockReport = wakelocks,
+            exitSignalReport = exitSignalResult,
         )
     }
 

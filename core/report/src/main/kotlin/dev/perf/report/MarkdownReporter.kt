@@ -2,6 +2,7 @@ package dev.perf.report
 
 import dev.perf.analysis.PerfReport
 import dev.perf.analysis.model.ColdStartMeasurement
+import dev.perf.analysis.model.ExitSignalReport
 import dev.perf.analysis.model.startup.StartupReport
 import dev.perf.analysis.model.startup.StartupStats
 import dev.perf.analysis.model.MemoryLeak
@@ -47,6 +48,7 @@ class MarkdownReporter(private val sourceLinker: SourceLinker? = null) {
             report.startup?.let { appendStartupSummary(it) }
                 ?: report.coldStart?.let { appendColdStartSummary(it) }
             report.wakelockReport?.let { appendWakelocksSection(it) }
+            report.exitSignalReport?.takeIf { it.hasExits }?.let { appendExitSignalsSection(it) }
             report.perfettoTraceFile?.let {
                 appendLine()
                 appendLine("### Perfetto trace")
@@ -62,6 +64,7 @@ class MarkdownReporter(private val sourceLinker: SourceLinker? = null) {
         }
 
         if (report.thresholdBreaches.isNotEmpty()) appendThresholdBreaches(report.thresholdBreaches)
+        report.exitSignalReport?.takeIf { it.hasExits }?.let { appendExitSignalsSection(it) }
         report.wakelockReport?.let { appendWakelocksSection(it) }
         report.startup?.let { appendStartupSection(it) }
             ?: report.coldStart?.let { appendColdStartSection(it) }
@@ -188,6 +191,21 @@ class MarkdownReporter(private val sourceLinker: SourceLinker? = null) {
         appendLine(snippet)
         appendLine("```")
         appendLine()
+    }
+
+    private fun StringBuilder.appendExitSignalsSection(exitReport: ExitSignalReport) {
+        appendLine("## Exit Signals")
+        appendLine()
+        appendLine("_Confirmed user-perceived exits during this session. Any entry is CRITICAL._")
+        appendLine()
+        appendLine("| Type | Package | Message | Raw line |")
+        appendLine("|------|---------|---------|----------|")
+        exitReport.events.forEach { event ->
+            val truncatedRaw = event.rawLine.take(120).replace("|", "\\|")
+            appendLine("| ${event.exitType.name} | ${event.packageName} | ${event.message} | $truncatedRaw |")
+        }
+        appendLine()
+        VitalsPlaybook.exitSignalSection().forEach { appendLine(it) }
     }
 
     private fun StringBuilder.appendWakelocksSection(w: WakelockReport) {

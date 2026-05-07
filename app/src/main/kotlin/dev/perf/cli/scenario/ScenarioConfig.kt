@@ -103,6 +103,8 @@ data class EngineConfig(
     val startupSamples: Int = 3,
     /** Partial wake locks via `dumpsys batterystats` (issues a destructive `--reset` at session start). */
     val wakelocks: Boolean = false,
+    /** Confirmed ANR / Crash / LMK detection via logcat stream. Any confirmed exit is CRITICAL. */
+    val exitSignals: Boolean = false,
 )
 
 /**

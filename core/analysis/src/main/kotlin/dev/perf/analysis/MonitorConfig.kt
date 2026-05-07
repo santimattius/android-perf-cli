@@ -14,4 +14,9 @@ data class MonitorConfig(
      * partial wake locks at end (destructive — clears system battery stats).
      */
     val wakelocks: Boolean = false,
+    /**
+     * When true, opens three concurrent logcat streams to detect confirmed ANR, crash, and LMK events.
+     * Any confirmed exit is reported as CRITICAL and causes the CLI to exit non-zero.
+     */
+    val exitSignals: Boolean = false,
 )
