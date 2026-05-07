@@ -96,6 +96,16 @@ object VitalsPlaybook {
     fun screenshotEvidenceGuidance(): String =
         "_Screenshots complement metrics; correlate with Rendering and Perfetto timelines._"
 
+    fun exitSignalSection(): List<String> = listOf(
+        "### Guidance (Vitals: ANR / Crash / LMK)",
+        "- Any confirmed exit is CRITICAL — investigate immediately.",
+        "- [ANR Vitals](https://developer.android.com/topic/performance/vitals/anr)",
+        "- [Crash Vitals](https://developer.android.com/topic/performance/vitals/crash)",
+        "- Note: LMK events may be suppressed on production builds (`ro.lmk.debug=false`); `exit-info` enrichment is the fallback.",
+        "- [Vitals hub]($VITALS_HUB)",
+        "",
+    )
+
     fun playConsoleLimitationsBanner(): List<String> = listOf(
         "---",
         "",

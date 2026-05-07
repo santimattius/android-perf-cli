@@ -1,6 +1,9 @@
 package dev.perf.report
 
 import dev.perf.analysis.PerfReport
+import dev.perf.analysis.model.ExitEvent
+import dev.perf.analysis.model.ExitSignalReport
+import dev.perf.analysis.model.ExitType
 import dev.perf.analysis.model.MemoryLeak
 import dev.perf.analysis.model.ColdStartMeasurement
 import dev.perf.analysis.model.RenderingIncident
@@ -314,6 +317,36 @@ class MarkdownReporterTest {
         root.deleteRecursively()
     }
 
+    // ── Exit Signals ──────────────────────────────────────────────────────────
+
+    @Test
+    fun `render_exitSignalReport_hasExits_sectionPresent`() {
+        val exitReport = anExitSignalReport(ExitType.ANR)
+        val output = MarkdownReporter().render(cleanReport().copy(exitSignalReport = exitReport))
+        assertContains(output, "## Exit Signals")
+    }
+
+    @Test
+    fun `render_exitSignalReport_hasExits_tableRowPresent`() {
+        val exitReport = anExitSignalReport(ExitType.ANR)
+        val output = MarkdownReporter().render(cleanReport().copy(exitSignalReport = exitReport))
+        assertContains(output, "ANR")
+        assertContains(output, "com.example.app")
+    }
+
+    @Test
+    fun `render_exitSignalReport_null_sectionAbsent`() {
+        val output = MarkdownReporter().render(cleanReport().copy(exitSignalReport = null))
+        assertFalse(output.contains("## Exit Signals"))
+    }
+
+    @Test
+    fun `render_exitSignalReport_emptyEvents_sectionAbsent`() {
+        val exitReport = ExitSignalReport(events = emptyList())
+        val output = MarkdownReporter().render(cleanReport().copy(exitSignalReport = exitReport))
+        assertFalse(output.contains("## Exit Signals"))
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private fun cleanReport() = PerfReport(
@@ -390,4 +423,15 @@ class MarkdownReporterTest {
             file.createNewFile()
         }
     }
+
+    private fun anExitSignalReport(exitType: ExitType) = ExitSignalReport(
+        events = listOf(
+            ExitEvent(
+                exitType = exitType,
+                message = "ANR: Input dispatching timed out",
+                packageName = pkg,
+                rawLine = "01-15 10:00:00.100  1234  1235 I am_anr : [1234,1000,com.example.app,952,Input dispatching timed out]",
+            ),
+        ),
+    )
 }
