@@ -14,6 +14,7 @@ import dev.perf.analysis.model.ThresholdBreach
 import dev.perf.analysis.model.WakelockReport
 import dev.perf.report.source.SourceLinker
 import dev.perf.report.source.StackFrameParser
+import dev.perf.report.vitals.VitalsMetric
 import dev.perf.report.vitals.VitalsPlaybook
 import java.io.File
 import java.time.Instant
@@ -77,11 +78,15 @@ class MarkdownReporter(private val sourceLinker: SourceLinker? = null) {
             VitalsPlaybook.strictModeSection(
                 report.strictModeViolations.map { it.violationType }.toSet(),
             ).forEach { appendLine(it) }
+            appendLine(VitalsPlaybook.sourceFooter(VitalsMetric.STRICT_MODE))
+            appendLine()
         }
         if (report.potentialAnrHints.any { it.severity != Severity.INFO }) {
             val filtered = report.potentialAnrHints.filter { it.severity != Severity.INFO }
             appendPotentialAnr(filtered)
             VitalsPlaybook.potentialAnrSection(filtered.map { it.hintType }.toSet()).forEach { appendLine(it) }
+            appendLine(VitalsPlaybook.sourceFooter(VitalsMetric.ANR))
+            appendLine()
         }
         if (report.renderingIncident.severity != Severity.INFO) {
             appendRendering(report.renderingIncident)
@@ -114,6 +119,8 @@ class MarkdownReporter(private val sourceLinker: SourceLinker? = null) {
         appendLine("_${sr.message}_")
         appendLine()
         VitalsPlaybook.startupSection().forEach { appendLine(it) }
+        appendLine(VitalsPlaybook.sourceFooter(VitalsMetric.COLD_START))
+        appendLine()
     }
 
     private fun StringBuilder.appendStartupSection(sr: StartupReport) {
@@ -128,6 +135,8 @@ class MarkdownReporter(private val sourceLinker: SourceLinker? = null) {
         appendStartupKindBlock("Warm", sr.warm)
         appendStartupKindBlock("Hot", sr.hot)
         VitalsPlaybook.startupSection().forEach { appendLine(it) }
+        appendLine(VitalsPlaybook.sourceFooter(VitalsMetric.COLD_START))
+        appendLine()
     }
 
     private fun StringBuilder.appendStartupStatsRow(label: String, stats: StartupStats?) {
@@ -166,6 +175,8 @@ class MarkdownReporter(private val sourceLinker: SourceLinker? = null) {
         appendLine("_${cs.message}_")
         appendLine()
         VitalsPlaybook.coldStartSection().forEach { appendLine(it) }
+        appendLine(VitalsPlaybook.sourceFooter(VitalsMetric.COLD_START))
+        appendLine()
     }
 
     private fun StringBuilder.appendColdStartSection(cs: ColdStartMeasurement) {
@@ -182,6 +193,8 @@ class MarkdownReporter(private val sourceLinker: SourceLinker? = null) {
         appendLine(cs.message)
         appendLine()
         VitalsPlaybook.coldStartSection().forEach { appendLine(it) }
+        appendLine(VitalsPlaybook.sourceFooter(VitalsMetric.COLD_START))
+        appendLine()
     }
 
     private fun StringBuilder.appendAndroidCliSection(extras: ReportRenderExtras) {
@@ -206,6 +219,14 @@ class MarkdownReporter(private val sourceLinker: SourceLinker? = null) {
         }
         appendLine()
         VitalsPlaybook.exitSignalSection().forEach { appendLine(it) }
+        appendLine(VitalsPlaybook.sourceFooter(VitalsMetric.EXIT_INFO))
+        appendLine()
+        appendLine(
+            "_Note: Android Vitals bad-behaviour thresholds are >0.47% ANR rate and >1.09% crash rate " +
+                "per daily sessions. Rate computation requires fleet aggregation — a single run cannot " +
+                "determine whether these thresholds are breached._",
+        )
+        appendLine()
     }
 
     private fun StringBuilder.appendWakelocksSection(w: WakelockReport) {
@@ -223,6 +244,10 @@ class MarkdownReporter(private val sourceLinker: SourceLinker? = null) {
         }
         appendLine()
         appendLine("_Total ${w.totalDurationMs} ms — ${w.severity.badge()}_")
+        appendLine()
+        appendLine("> Play Console bad-behaviour threshold: >5% of daily sessions with a partial wake lock held >1 h.")
+        appendLine()
+        appendLine(VitalsPlaybook.sourceFooter(VitalsMetric.EXCESSIVE_WAKELOCKS))
         appendLine()
     }
 
@@ -438,6 +463,8 @@ class MarkdownReporter(private val sourceLinker: SourceLinker? = null) {
         appendLine("| p90 | ${incident.p90Ms.fmt()} ms |")
         appendLine("| p95 | ${incident.p95Ms.fmt()} ms |")
         appendLine("| p99 | ${incident.p99Ms.fmt()} ms |")
+        appendLine()
+        appendLine(VitalsPlaybook.sourceFooter(VitalsMetric.SLOW_RENDERING))
         appendLine()
     }
 

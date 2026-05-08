@@ -258,7 +258,7 @@ class RunCommand : CliktCommand(
                         echo("→ Measuring startup ($typeLabel, $samples samples/type)…")
                         delay(400)
                         withContext(Dispatchers.IO) {
-                            val cfg = buildStartupCaptureConfig(scenarioConfig, resolved.engines)
+                            val cfg = buildStartupCaptureConfig(resolved.thresholds, resolved.engines)
                             StartupCapture(device).capture(packageName, activityComponent, cfg)
                         }
                     } else {
@@ -373,7 +373,7 @@ class RunCommand : CliktCommand(
                 report =
                     ThresholdEvaluator.applyToReport(
                         report,
-                        scenarioConfig?.thresholds ?: ThresholdConfig(),
+                        resolved.thresholds,
                     )
 
                 val generatedAt = Instant.now()
@@ -529,10 +529,10 @@ class RunCommand : CliktCommand(
 }
 
 private fun buildStartupCaptureConfig(
-    scenarioConfig: ScenarioConfig?,
+    thresholds: ThresholdConfig,
     engines: EngineConfig,
 ): StartupCaptureConfig {
-    val th = scenarioConfig?.thresholds ?: ThresholdConfig()
+    val th = thresholds
     val types =
         if (engines.startupTypes.isEmpty()) {
             setOf(StartupType.COLD)

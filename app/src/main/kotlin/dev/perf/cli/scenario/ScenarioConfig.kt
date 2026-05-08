@@ -132,11 +132,70 @@ data class ThresholdConfig(
     val maxWarmStartMs: Int? = null,
     /** When set, compared against hot-start P50 from the startup engine. */
     val maxHotStartMs: Int? = null,
-    /** Breach when summed partial wake-lock duration exceeds this (milliseconds). */
+    /**
+     * Absolute heuristic — does NOT represent the Play Console session-percentage definition.
+     * Breach when summed partial wake-lock duration exceeds this (milliseconds).
+     */
     val maxWakelockTimeMs: Long? = null,
-    /** Breach when the number of distinct partial wake-lock rows exceeds this. */
+    /**
+     * Absolute heuristic — does NOT represent the Play Console session-percentage definition.
+     * Breach when the number of distinct partial wake-lock rows exceeds this.
+     */
     val maxWakelockCount: Int? = null,
+    /**
+     * When non-null, triggers a single-run approximation of the Play Console session-percentage
+     * rule: if any wake lock entry exceeds [maxWakelockLongHeldMs] in this run, a WARNING breach
+     * is emitted. Uses [VitalsDefaults.WAKELOCK_SESSION_PERCENT] as the reference threshold.
+     */
+    val maxWakelockSessionPercent: Double? = null,
+    /**
+     * The "long-held" boundary in milliseconds used with [maxWakelockSessionPercent].
+     * A wake lock entry with totalDurationMs exceeding this is treated as a long-held lock.
+     * Defaults to [VitalsDefaults.WAKELOCK_LONG_HELD_MS] (1 hour) when null.
+     */
+    val maxWakelockLongHeldMs: Long? = null,
 )
+
+/**
+ * Official Android Vitals threshold constants. All values are `const val` (compile-time literals;
+ * GraalVM AOT-safe; no reflection).
+ *
+ * These constants reflect the bad-behaviour thresholds published at
+ * https://developer.android.com/topic/performance/vitals.
+ *
+ * Note: `maxJankyPercent` is intentionally excluded — the 5.0 default is a project-level
+ * aggregate SLO, not a direct Play Console numeric gate.
+ */
+object VitalsDefaults {
+    /** Cold TTID bad-behaviour threshold per Android Vitals. */
+    const val COLD_START_MS = 5000L
+    /** Warm TTID bad-behaviour threshold per Android Vitals. */
+    const val WARM_START_MS = 2000L
+    /** Hot TTID bad-behaviour threshold per Android Vitals. */
+    const val HOT_START_MS = 1500L
+    /** Percentage of daily sessions with a partial wake lock held for more than 1 hour. */
+    const val WAKELOCK_SESSION_PERCENT = 5.0
+    /** 1 hour in milliseconds — the Play Console long-held wake lock boundary. */
+    const val WAKELOCK_LONG_HELD_MS = 3_600_000L
+
+    /**
+     * Applies all Vitals threshold values to [t], overwriting every field unconditionally.
+     * This implements the "vitals profile wins" policy (D1): when `profile: "vitals"` is set,
+     * the Play Console gates take precedence regardless of any user-supplied values.
+     *
+     * Note: [ThresholdConfig.maxJankyPercent] is NOT overwritten — excluded per spec.
+     */
+    fun applyTo(t: ThresholdConfig): ThresholdConfig = t.copy(
+        maxFrozenFrames = 0,
+        maxStrictModeViolations = 0,
+        maxPotentialAnrHints = 50,
+        maxColdStartMs = COLD_START_MS.toInt(),
+        maxWarmStartMs = WARM_START_MS.toInt(),
+        maxHotStartMs = HOT_START_MS.toInt(),
+        maxWakelockSessionPercent = WAKELOCK_SESSION_PERCENT,
+        maxWakelockLongHeldMs = WAKELOCK_LONG_HELD_MS,
+    )
+}
 
 fun loadScenario(file: File): ScenarioConfig =
     json.decodeFromString(file.readText())

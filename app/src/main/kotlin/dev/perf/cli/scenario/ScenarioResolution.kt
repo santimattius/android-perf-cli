@@ -21,6 +21,8 @@ data class ResolvedRunConfig(
     val screenshotsEnabled: Boolean,
     val workflow: List<WorkflowStep>,
     val build: GradleBuildConfig?,
+    /** Merged threshold config after applying the vitals profile (if any). */
+    val thresholds: ThresholdConfig = ThresholdConfig(),
 )
 
 private const val FULL_DEFAULT_CLI_SECONDS = 120
@@ -33,12 +35,28 @@ private const val FULL_DEFAULT_CLI_SECONDS = 120
  *
  * **`"profile":"full"`** in JSON: same heavyweight merge; **`durationSeconds`** is taken from the file.
  */
+/**
+ * Applies the vitals profile if `scenario.profile == "vitals"` (case-insensitive).
+ *
+ * D1: When profile is "vitals", [VitalsDefaults] values OVERRIDE any user-supplied threshold
+ * unconditionally. This reflects the "this run mirrors Play Console gating" contract.
+ *
+ * For any other profile (null, "full", custom), the scenario is returned unchanged.
+ */
+private fun applyVitalsProfileIfNeeded(scenario: ScenarioConfig): ScenarioConfig =
+    if (scenario.profile.equals("vitals", ignoreCase = true)) {
+        scenario.copy(thresholds = VitalsDefaults.applyTo(scenario.thresholds))
+    } else {
+        scenario
+    }
+
 fun resolveRunParameters(
     scenarioConfig: ScenarioConfig?,
     fullCli: Boolean,
     cliDurationSeconds: Int,
 ): ResolvedRunConfig {
-    val scenario = scenarioConfig ?: ScenarioConfig(name = "cli")
+    val rawScenario = scenarioConfig ?: ScenarioConfig(name = "cli")
+    val scenario = applyVitalsProfileIfNeeded(rawScenario)
     val profileFull = scenario.profile.equals("full", ignoreCase = true)
     val full = fullCli || profileFull
 
@@ -91,5 +109,6 @@ fun resolveRunParameters(
         screenshotsEnabled = shots,
         workflow = scenario.workflow.ifEmpty { emptyList() },
         build = buildCfg,
+        thresholds = scenario.thresholds,
     )
 }

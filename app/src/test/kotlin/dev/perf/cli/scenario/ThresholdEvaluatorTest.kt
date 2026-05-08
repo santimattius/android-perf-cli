@@ -239,6 +239,86 @@ class ThresholdEvaluatorTest {
         assertTrue(breaches.none { it.message.contains("Cold start") })
     }
 
+    // ── Wake-Lock Session-Percentage Evaluation ───────────────────────────────
+
+    @Test
+    fun `wakelock entry exceeding maxWakelockLongHeldMs emits WARNING breach mentioning session and wake lock`() {
+        val wl = WakelockReport(
+            entries = listOf(WakelockEntry("alarm-wakelock", 1, 4_000_000L)),
+            totalDurationMs = 4_000_000L,
+        )
+        val thresholds = ThresholdConfig(
+            maxWakelockSessionPercent = 5.0,
+            maxWakelockLongHeldMs = 3_600_000L,
+        )
+        val report = reportWith().copy(wakelockReport = wl)
+        val breaches = ThresholdEvaluator.evaluate(report, thresholds)
+
+        val sessionBreach = breaches.find { it.message.contains("session", ignoreCase = true) }
+        assertTrue(sessionBreach != null, "Expected a session-percent breach but found none. Breaches: $breaches")
+        assertTrue(sessionBreach.message.contains("wake lock", ignoreCase = true), "Breach message should mention 'wake lock': ${sessionBreach.message}")
+        assertEquals(Severity.WARNING, sessionBreach.severity, "Session-percent breach should be WARNING, not CRITICAL")
+    }
+
+    @Test
+    fun `all wakelock entries below maxWakelockLongHeldMs produce no session-percent breach`() {
+        val wl = WakelockReport(
+            entries = listOf(
+                WakelockEntry("short-lock", 5, 1_000_000L),
+                WakelockEntry("medium-lock", 3, 3_599_999L),
+            ),
+            totalDurationMs = 4_599_999L,
+        )
+        val thresholds = ThresholdConfig(
+            maxWakelockSessionPercent = 5.0,
+            maxWakelockLongHeldMs = 3_600_000L,
+        )
+        val report = reportWith().copy(wakelockReport = wl)
+        val breaches = ThresholdEvaluator.evaluate(report, thresholds)
+
+        val sessionBreach = breaches.find { it.message.contains("session", ignoreCase = true) }
+        assertTrue(sessionBreach == null, "Expected no session-percent breach but found: $sessionBreach")
+    }
+
+    @Test
+    fun `maxWakelockSessionPercent null means no session-percent breach even with 2h entry`() {
+        val wl = WakelockReport(
+            entries = listOf(WakelockEntry("long-lock", 1, 7_200_000L)),
+            totalDurationMs = 7_200_000L,
+        )
+        val thresholds = ThresholdConfig(
+            maxWakelockSessionPercent = null,
+            maxWakelockLongHeldMs = 3_600_000L,
+        )
+        val report = reportWith().copy(wakelockReport = wl)
+        val breaches = ThresholdEvaluator.evaluate(report, thresholds)
+
+        val sessionBreach = breaches.find { it.message.contains("session", ignoreCase = true) }
+        assertTrue(sessionBreach == null, "Expected no session-percent breach when maxWakelockSessionPercent is null, found: $sessionBreach")
+    }
+
+    // ── Task 3.4: applyToReport severity stays WARNING for session-percent breach ──
+
+    @Test
+    fun `applyToReport with only session-percent breach keeps wakelock severity as WARNING not CRITICAL`() {
+        val wl = WakelockReport(
+            entries = listOf(WakelockEntry("long-alarm", 1, 4_000_000L)),
+            totalDurationMs = 4_000_000L,
+        )
+        val thresholds = ThresholdConfig(
+            maxWakelockTimeMs = null,
+            maxWakelockCount = null,
+            maxWakelockSessionPercent = 5.0,
+            maxWakelockLongHeldMs = 3_600_000L,
+        )
+        val result = ThresholdEvaluator.applyToReport(reportWith().copy(wakelockReport = wl), thresholds)
+
+        assertEquals(Severity.WARNING, result.wakelockReport?.severity,
+            "Severity should remain WARNING when only a session-percent breach fires")
+        assertTrue(result.thresholdBreaches.any { it.message.contains("session", ignoreCase = true) },
+            "Expected a session-percent breach in thresholdBreaches")
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private fun reportWith(
