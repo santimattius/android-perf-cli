@@ -9,8 +9,11 @@ import dev.perf.analysis.model.RenderingIncident
 import dev.perf.analysis.model.Severity
 import dev.perf.analysis.model.StrictModeViolation
 import dev.perf.analysis.model.ThresholdBreach
+import dev.perf.analysis.model.BackgroundNetworkReport
 import dev.perf.analysis.model.ExitSignalReport
+import dev.perf.analysis.model.StuckWakelockReport
 import dev.perf.analysis.model.WakelockReport
+import dev.perf.analysis.model.WifiScanReport
 import java.io.File
 
 data class PerfReport(
@@ -46,6 +49,21 @@ data class PerfReport(
     val wakelockReport: WakelockReport? = null,
     /** Confirmed process exits (ANR/Crash/LMK) from streaming logcat; null when disabled. */
     val exitSignalReport: ExitSignalReport? = null,
+    /**
+     * Background network traffic delta (rx/tx bytes) for the session; null when engine is disabled
+     * or UID resolution fails. INFO-only — does not affect [hasIssues] or [overallSeverity].
+     */
+    val backgroundNetwork: BackgroundNetworkReport? = null,
+    /**
+     * Background Wi-Fi scan count delta for the session; null when engine is disabled or capture
+     * fails. INFO-only — does not affect [hasIssues] or [overallSeverity].
+     */
+    val backgroundWifi: WifiScanReport? = null,
+    /**
+     * Stuck partial wake-lock entries detected by diffing start/end snapshots; null when engine is
+     * disabled. INFO-only — does not affect [hasIssues] or [overallSeverity].
+     */
+    val stuckWakelocks: StuckWakelockReport? = null,
 ) {
     val hasIssues: Boolean
         get() = strictModeViolations.isNotEmpty()

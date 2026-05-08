@@ -105,6 +105,26 @@ data class EngineConfig(
     val wakelocks: Boolean = false,
     /** Confirmed ANR / Crash / LMK detection via logcat stream. Any confirmed exit is CRITICAL. */
     val exitSignals: Boolean = false,
+    /**
+     * Enable background network traffic measurement via `dumpsys netstats --uid N`.
+     * Reports total session rx/tx bytes as INFO — no threshold gate in v1.
+     * Reference: https://developer.android.com/topic/performance/vitals/bg-network-usage
+     */
+    val backgroundNetwork: Boolean = false,
+    /**
+     * Enable background Wi-Fi scan count measurement via `dumpsys batterystats`.
+     * Must be used with [wakelocks] enabled (requires `--reset` to be effective).
+     * Reports scan count delta as INFO — no threshold gate in v1.
+     * Reference: https://developer.android.com/topic/performance/vitals/bg-wifi
+     */
+    val backgroundWifi: Boolean = false,
+    /**
+     * Enable stuck partial wake-lock detection by diffing start/end [WakelockReport]s.
+     * Requires [wakelocks] = true (depends on the wakelock baseline after `--reset`).
+     * Reports stuck locks as INFO — no threshold gate in v1.
+     * Reference: https://developer.android.com/topic/performance/vitals/stuck-wakelock
+     */
+    val stuckWakelocks: Boolean = false,
 )
 
 /**

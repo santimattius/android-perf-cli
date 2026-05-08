@@ -20,6 +20,9 @@ enum class VitalsMetric(val url: String) {
     EXCESSIVE_WAKELOCKS("https://developer.android.com/topic/performance/vitals/wakelocks"),
     STRICT_MODE("https://developer.android.com/topic/performance/vitals"),
     EXIT_INFO("https://developer.android.com/topic/performance/vitals"),
+    BG_NETWORK("https://developer.android.com/topic/performance/vitals/bg-network-usage"),
+    BG_WIFI("https://developer.android.com/topic/performance/vitals/bg-wifi"),
+    STUCK_WAKELOCK("https://developer.android.com/topic/performance/vitals/stuck-wakelock"),
 }
 
 /**
