@@ -6,6 +6,8 @@ import dev.perf.analysis.model.ExitSignalReport
 import dev.perf.analysis.model.ExitType
 import dev.perf.analysis.model.MemoryLeak
 import dev.perf.analysis.model.ColdStartMeasurement
+import dev.perf.analysis.model.PermissionDenial
+import dev.perf.analysis.model.PermissionDenialReport
 import dev.perf.analysis.model.PotentialAnrHint
 import dev.perf.analysis.model.PotentialAnrHintType
 import dev.perf.analysis.model.RenderingIncident
@@ -603,6 +605,69 @@ class MarkdownReporterTest {
         assertFalse(output.contains("## Stuck Wake Locks"), "Must not render stuck wake locks section")
     }
 
+    // ── T-7: Permission Denials section ──────────────────────────────────────
+
+    @Test
+    fun `renders permission denials section with WARNING badge and table when denials present`() {
+        val denial = aPermissionDenial(permission = "android.permission.READ_CONTACTS", uid = 10050)
+        val report = PermissionDenialReport(denials = listOf(denial))
+        val output = MarkdownReporter().render(cleanReport().copy(permissionDenials = report))
+
+        assertContains(output, "## Permission Denials")
+        assertContains(output, "WARNING")
+        assertContains(output, "android.permission.READ_CONTACTS")
+    }
+
+    @Test
+    fun `renders permission denials section with INFO badge and no table when empty`() {
+        val report = PermissionDenialReport(denials = emptyList())
+        val output = MarkdownReporter().render(cleanReport().copy(permissionDenials = report))
+
+        assertContains(output, "## Permission Denials")
+        assertContains(output, "INFO")
+        assertFalse(output.contains("| Permission |"))
+    }
+
+    @Test
+    fun `omits permission denials section when permissionDenials is null`() {
+        val output = MarkdownReporter().render(cleanReport().copy(permissionDenials = null))
+        assertFalse(output.contains("## Permission Denials"))
+    }
+
+    @Test
+    fun `escapes pipe characters in raw denial line`() {
+        val denial = aPermissionDenial(rawLine = "some | pipe | line")
+        val report = PermissionDenialReport(denials = listOf(denial))
+        val output = MarkdownReporter().render(cleanReport().copy(permissionDenials = report))
+        assertContains(output, "\\|")
+    }
+
+    @Test
+    fun `renders slow frames row in rendering table when slowFrames is non-zero`() {
+        val incident = aRenderingIncident(Severity.WARNING, slowFrames = 5, totalFrames = 100)
+        val output = MarkdownReporter().render(reportWith(rendering = incident))
+        assertContains(output, "Slow frames")
+        assertContains(output, "5")
+    }
+
+    @Test
+    fun `slow session disclaimer always present in rendering section`() {
+        val incident = aRenderingIncident(Severity.WARNING, slowFrames = 0, totalFrames = 100)
+        val output = MarkdownReporter().render(reportWith(rendering = incident))
+        assertTrue(
+            output.contains("offline proxy", ignoreCase = true) || output.contains("single device", ignoreCase = true) || output.contains("single run", ignoreCase = true) || output.contains("Play Console aggregates", ignoreCase = true),
+            "Expected slow session disclaimer in rendering section"
+        )
+    }
+
+    @Test
+    fun `source footer present in permission denials section`() {
+        val denial = aPermissionDenial()
+        val report = PermissionDenialReport(denials = listOf(denial))
+        val output = MarkdownReporter().render(cleanReport().copy(permissionDenials = report))
+        assertContains(output, "_Source: [Android Vitals]")
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private fun cleanReport() = PerfReport(
@@ -654,15 +719,18 @@ class MarkdownReporterTest {
         p90: Double = 10.0,
         p95: Double = 12.0,
         p99: Double = 15.0,
+        slowFrames: Int = 0,
+        totalFrames: Int = 100,
     ) = RenderingIncident(
         severity = severity,
         message = "test",
         jankyFrames = 0,
         frozenFrames = frozenFrames,
-        totalFrames = 100,
+        totalFrames = totalFrames,
         p90Ms = p90,
         p95Ms = p95,
         p99Ms = p99,
+        slowFrames = slowFrames,
     )
 
     private fun fakeProject(block: ProjectBuilder.() -> Unit): File {
@@ -679,6 +747,19 @@ class MarkdownReporterTest {
             file.createNewFile()
         }
     }
+
+    private fun aPermissionDenial(
+        permission: String = "android.permission.READ_CONTACTS",
+        uid: Int = 10050,
+        rawLine: String = "W/ActivityManager: Permission Denial: requires $permission (pid=1234, uid=$uid)",
+    ) = PermissionDenial(
+        severity = Severity.WARNING,
+        message = "Permission Denial: $permission",
+        packageName = pkg,
+        permission = permission,
+        uid = uid,
+        rawLine = rawLine,
+    )
 
     private fun anExitSignalReport(exitType: ExitType) = ExitSignalReport(
         events = listOf(

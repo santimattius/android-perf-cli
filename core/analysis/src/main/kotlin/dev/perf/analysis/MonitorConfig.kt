@@ -28,4 +28,10 @@ data class MonitorConfig(
      * INFO-only in v1.
      */
     val stuckWakelocks: Boolean = false,
+    /**
+     * When true, opens a separate logcat stream filtered to `ActivityManager:W` and `PackageManager:W`
+     * to detect permission denials for the target package's UID. INFO-only by default — does NOT
+     * affect [dev.perf.analysis.PerfReport.hasIssues] or exit code unless [maxPermissionDenials] threshold is set.
+     */
+    val permissionDenials: Boolean = false,
 )

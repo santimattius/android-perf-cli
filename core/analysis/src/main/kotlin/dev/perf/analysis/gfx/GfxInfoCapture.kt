@@ -9,6 +9,12 @@ import kotlinx.coroutines.withContext
 private const val JANKY_THRESHOLD_MS = 16.0
 private const val FROZEN_THRESHOLD_MS = 700.0
 
+/** Lower bound (exclusive) for the "slow session" bucket — frames strictly above this value. */
+private const val SLOW_FRAME_LOWER_MS = 50.0
+
+/** Upper bound (inclusive) for the "slow session" bucket — mirrors [FROZEN_THRESHOLD_MS] by design. */
+private const val SLOW_FRAME_UPPER_MS = 700.0
+
 /**
  * Captures and parses `dumpsys gfxinfo` for a given package.
  *
@@ -33,33 +39,44 @@ class GfxInfoCapture(private val device: AdbClient) {
                 p90Ms = 0.0,
                 p95Ms = 0.0,
                 p99Ms = 0.0,
+                slowFrames = 0,
             )
         }
 
         val sorted = frameTimes.sorted()
         val janky = sorted.count { it > JANKY_THRESHOLD_MS }
         val frozen = sorted.count { it > FROZEN_THRESHOLD_MS }
+        val slow = sorted.count { it > SLOW_FRAME_LOWER_MS && it <= SLOW_FRAME_UPPER_MS }
         val total = sorted.size
 
         val p90 = sorted.percentile(90)
         val p95 = sorted.percentile(95)
         val p99 = sorted.percentile(99)
 
-        val severity = when {
+        val slowPercent = if (total > 0) slow.toDouble() / total else 0.0
+        val slowSeverity = when {
+            slowPercent > 0.05 -> Severity.CRITICAL
+            slowPercent > 0.01 -> Severity.WARNING
+            else -> Severity.INFO
+        }
+        val baseSeverity = when {
             frozen > 0 || (janky.toDouble() / total) > 0.05 -> Severity.CRITICAL
             (janky.toDouble() / total) > 0.01 -> Severity.WARNING
             else -> Severity.INFO
         }
+        // Severity.CRITICAL has ordinal 0 — minOrNull picks the WORST (lowest ordinal)
+        val severity = sequenceOf(baseSeverity, slowSeverity).minOrNull() ?: Severity.INFO
 
         RenderingIncident(
             severity = severity,
-            message = buildSummary(janky, frozen, total),
+            message = buildSummary(janky, slow, frozen, total),
             jankyFrames = janky,
             frozenFrames = frozen,
             totalFrames = total,
             p90Ms = p90,
             p95Ms = p95,
             p99Ms = p99,
+            slowFrames = slow,
         )
     }
 
@@ -92,6 +109,8 @@ class GfxInfoCapture(private val device: AdbClient) {
         return this[idx]
     }
 
-    private fun buildSummary(janky: Int, frozen: Int, total: Int): String =
-        "Frames: $total total | $janky janky (>${JANKY_THRESHOLD_MS.toInt()}ms) | $frozen frozen (>${FROZEN_THRESHOLD_MS.toInt()}ms)"
+    private fun buildSummary(janky: Int, slow: Int, frozen: Int, total: Int): String =
+        "Frames: $total total | $janky janky (>${JANKY_THRESHOLD_MS.toInt()}ms) | " +
+            "$slow slow (${SLOW_FRAME_LOWER_MS.toInt()}–${SLOW_FRAME_UPPER_MS.toInt()}ms) | " +
+            "$frozen frozen (>${FROZEN_THRESHOLD_MS.toInt()}ms)"
 }

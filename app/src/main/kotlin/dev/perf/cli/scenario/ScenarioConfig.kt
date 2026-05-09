@@ -125,6 +125,14 @@ data class EngineConfig(
      * Reference: https://developer.android.com/topic/performance/vitals/stuck-wakelock
      */
     val stuckWakelocks: Boolean = false,
+    /**
+     * Enable permission denial detection via a separate logcat stream filtered to
+     * `ActivityManager:W` and `PackageManager:W`. Denials are filtered by the target
+     * package's UID resolved via `dumpsys package`.
+     * Reports denials as WARNING — does NOT affect [dev.perf.analysis.PerfReport.hasIssues] or exit code by default.
+     * Use [ThresholdConfig.maxPermissionDenials] to opt into CRITICAL escalation.
+     */
+    val permissionDenials: Boolean = false,
 )
 
 /**
@@ -174,6 +182,14 @@ data class ThresholdConfig(
      * Defaults to [VitalsDefaults.WAKELOCK_LONG_HELD_MS] (1 hour) when null.
      */
     val maxWakelockLongHeldMs: Long? = null,
+    /**
+     * When non-null, triggers a CRITICAL threshold breach if the number of permission denials
+     * in the session meets or exceeds this value. Set to 0 to fail on any denial.
+     *
+     * When null (default), permission denials are reported as WARNING/INFO signals only and
+     * do NOT affect the exit code.
+     */
+    val maxPermissionDenials: Int? = null,
 )
 
 /**

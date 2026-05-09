@@ -31,6 +31,8 @@ data class RenderingIncident(
     val p90Ms: Double,
     val p95Ms: Double,
     val p99Ms: Double,
+    /** Frames with render time in (50ms, 700ms] — the "slow session" bucket from Android Vitals. Default 0 for backward-compatible deserialization. */
+    val slowFrames: Int = 0,
 ) : PerfIncident
 
 @Serializable

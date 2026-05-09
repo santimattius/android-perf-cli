@@ -5,6 +5,7 @@ import dev.perf.analysis.exit.ExitSignalCapture
 import dev.perf.analysis.gfx.GfxInfoCapture
 import dev.perf.analysis.network.BackgroundNetworkCapture
 import dev.perf.analysis.network.NetworkSnapshot
+import dev.perf.analysis.permission.PermissionDenialCapture
 import dev.perf.analysis.wakelock.StuckWakelockDetector
 import dev.perf.analysis.wakelock.WakelockCapture
 import dev.perf.analysis.wifi.WifiScanCapture
@@ -13,6 +14,7 @@ import dev.perf.analysis.logcat.LogcatParser
 import dev.perf.analysis.logcat.SessionLogcatEvent
 import dev.perf.analysis.memory.HeapAnalyzer
 import dev.perf.analysis.model.ExitSignalReport
+import dev.perf.analysis.model.PermissionDenialReport
 import dev.perf.analysis.model.PerfIncident
 import dev.perf.analysis.model.PotentialAnrHint
 import dev.perf.analysis.model.RenderingIncident
@@ -49,6 +51,7 @@ class PerfWatchdog(
     private val exitSignalCapture = ExitSignalCapture(device)
     private val backgroundNetworkCapture = BackgroundNetworkCapture(device)
     private val wifiScanCapture = WifiScanCapture(device)
+    private val permissionDenialCapture = PermissionDenialCapture(device)
 
     private val _incidents = MutableSharedFlow<PerfIncident>(extraBufferCapacity = 512)
     val incidents: SharedFlow<PerfIncident> = _incidents.asSharedFlow()
@@ -58,6 +61,8 @@ class PerfWatchdog(
     private var logcatJob: Job? = null
     private var exitSignalJob: Job? = null
     private var exitSignalResult: ExitSignalReport? = null
+    private var permissionDenialJob: Job? = null
+    private var permissionDenialResult: PermissionDenialReport? = null
 
     // Background signal baseline snapshots (captured at session start, after reset)
     private var netStartSnapshot: NetworkSnapshot? = null
@@ -76,6 +81,11 @@ class PerfWatchdog(
         if (monitor.exitSignals) {
             exitSignalJob = scope.launch {
                 exitSignalResult = exitSignalCapture.capture(packageName, 0L)
+            }
+        }
+        if (monitor.permissionDenials) {
+            permissionDenialJob = scope.launch {
+                permissionDenialResult = permissionDenialCapture.capture(packageName)
             }
         }
 
@@ -120,6 +130,7 @@ class PerfWatchdog(
     }
 
     suspend fun stop(analyzeHeap: Boolean = false): PerfReport {
+        permissionDenialJob?.cancelAndJoin()
         exitSignalJob?.cancelAndJoin()
         logcatJob?.cancel()
         // Ensure baseline snapshots are captured before computing end-of-session deltas
@@ -163,6 +174,7 @@ class PerfWatchdog(
             backgroundNetwork = bgNetwork,
             backgroundWifi = bgWifi,
             stuckWakelocks = stuckWakelocks,
+            permissionDenials = permissionDenialResult,
         )
     }
 
