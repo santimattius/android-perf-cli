@@ -15,6 +15,7 @@ import dev.perf.analysis.model.PermissionDenialReport
 import dev.perf.analysis.model.StuckWakelockReport
 import dev.perf.analysis.model.WakelockReport
 import dev.perf.analysis.model.WifiScanReport
+import dev.perf.analysis.score.PerfScore
 import java.io.File
 
 data class PerfReport(
@@ -74,6 +75,12 @@ data class PerfReport(
      * optional CRITICAL escalation via [dev.perf.cli.scenario.ThresholdEvaluator].
      */
     val permissionDenials: PermissionDenialReport? = null,
+    /**
+     * Composite performance score computed by [dev.perf.analysis.score.PerfScoreCalculator].
+     * Null when the calculator has not been invoked (e.g. in unit tests or when RunCommand
+     * has not yet called compute()). Does NOT affect [hasIssues] or [overallSeverity].
+     */
+    val perfScore: PerfScore? = null,
 ) {
     val hasIssues: Boolean
         get() = strictModeViolations.isNotEmpty()

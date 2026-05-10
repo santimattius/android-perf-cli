@@ -9,9 +9,13 @@ import dev.perf.analysis.model.Severity
 import dev.perf.analysis.model.StuckWakelockEntry
 import dev.perf.analysis.model.StuckWakelockReport
 import dev.perf.analysis.model.WifiScanReport
+import dev.perf.analysis.score.PerfScore
+import dev.perf.analysis.score.PerfScoreTier
+import dev.perf.analysis.score.SignalScore
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class PerfReportTest {
@@ -84,6 +88,45 @@ class PerfReportTest {
         assertFalse(report.hasIssues)
         // INFO signals do NOT affect overallSeverity (stays INFO from base)
         assertEquals(Severity.INFO, report.overallSeverity)
+    }
+
+    // T-10.1 RED test 1: PerfReport constructed without perfScore → perfScore == null
+    @Test
+    fun `perfReport_noPerfScore_perfScoreIsNull`() {
+        val report = baseReport()
+        assertNull(report.perfScore)
+    }
+
+    // T-10.1 RED test 2: PerfReport with BAD-tier perfScore → hasIssues unchanged (still from threshold breaches)
+    @Test
+    fun `perfReport_withBadTierPerfScore_hasIssuesUnchangedFromBreachesOnly`() {
+        val badScore = PerfScore(
+            score = 10,
+            tier = PerfScoreTier.BAD,
+            breakdown = listOf(SignalScore("exitSignals", 10, 30, true)),
+            activeSignalCount = 1,
+        )
+        val reportWithScore = baseReport().copy(perfScore = badScore)
+        val reportWithoutScore = baseReport()
+        // hasIssues must be the same regardless of perfScore
+        assertEquals(reportWithoutScore.hasIssues, reportWithScore.hasIssues)
+        // Both should be false (no breaches, no leaks, etc.)
+        assertFalse(reportWithScore.hasIssues)
+    }
+
+    // T-10.1 RED test 3: overallSeverity unaffected by perfScore
+    @Test
+    fun `perfReport_withBadTierPerfScore_overallSeverityUnchanged`() {
+        val badScore = PerfScore(
+            score = 10,
+            tier = PerfScoreTier.BAD,
+            breakdown = listOf(SignalScore("exitSignals", 10, 30, true)),
+            activeSignalCount = 1,
+        )
+        val reportWithScore = baseReport().copy(perfScore = badScore)
+        val reportWithoutScore = baseReport()
+        assertEquals(reportWithoutScore.overallSeverity, reportWithScore.overallSeverity)
+        assertEquals(Severity.INFO, reportWithScore.overallSeverity)
     }
 
     // TASK-30 test 3: exitSignalReport with ANR event → overallSeverity == CRITICAL

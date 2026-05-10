@@ -17,6 +17,8 @@ import dev.perf.analysis.model.StuckWakelockReport
 import dev.perf.analysis.model.ThresholdBreach
 import dev.perf.analysis.model.WakelockReport
 import dev.perf.analysis.model.WifiScanReport
+import dev.perf.analysis.score.PerfScore
+import dev.perf.analysis.score.PerfScoreTier
 import dev.perf.report.source.SourceLinker
 import dev.perf.report.source.StackFrameParser
 import dev.perf.report.vitals.VitalsMetric
@@ -25,6 +27,7 @@ import java.io.File
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import kotlin.math.roundToInt
 
 // Play Console rate gates — thresholds above which an app is flagged as "bad behaviour"
 private const val ANR_GATE = 0.0047          // 0.47% ANR rate
@@ -52,6 +55,7 @@ class MarkdownReporter(private val sourceLinker: SourceLinker? = null) {
 
     fun render(report: PerfReport, extras: ReportRenderExtras = ReportRenderExtras()): String = buildString {
         appendHeader(report, extras)
+        report.perfScore?.let { appendPerfScoreSection(it) }
         appendSidecarEvidence(report)
 
         if (!report.hasIssues) {
@@ -478,6 +482,37 @@ class MarkdownReporter(private val sourceLinker: SourceLinker? = null) {
             appendLine("_${hints.size - 30} more signals omitted._")
             appendLine()
         }
+    }
+
+    // ── Perf Score section ────────────────────────────────────────────────────
+
+    private fun StringBuilder.appendPerfScoreSection(s: PerfScore) {
+        appendLine("## Perf Score")
+        appendLine()
+        appendLine("**${s.score} / 100 — ${s.tier.display()}**")
+        appendLine()
+        val filled = (s.score / 10.0).roundToInt().coerceIn(0, 10)
+        appendLine("`${"█".repeat(filled)}${"░".repeat(10 - filled)}` ${s.score}/100")
+        appendLine()
+        appendLine("| Signal | Sub-score | Weight | Active |")
+        appendLine("|---|---|---|---|")
+        s.breakdown.forEach { row ->
+            val subStr = if (row.active) row.subScore.toString() else "—"
+            appendLine("| ${row.signal} | $subStr | ${row.weight}% | ${if (row.active) "yes" else "no"} |")
+        }
+        appendLine()
+        appendLine("_Active signals: ${s.activeSignalCount} of 6. Score is a weighted average over active signals only._")
+        if (s.activeSignalCount < 3) {
+            appendLine()
+            appendLine("_⚠ Score based on fewer than 3 signals — enable more engines for a representative result._")
+        }
+        appendLine()
+    }
+
+    private fun PerfScoreTier.display(): String = when (this) {
+        PerfScoreTier.GOOD -> "GOOD"
+        PerfScoreTier.NEEDS_IMPROVEMENT -> "NEEDS IMPROVEMENT"
+        PerfScoreTier.BAD -> "BAD"
     }
 
     // ── Sections ──────────────────────────────────────────────────────────────
