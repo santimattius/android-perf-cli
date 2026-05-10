@@ -4,6 +4,7 @@ import dev.perf.analysis.PerfReport
 import dev.perf.analysis.model.BackgroundNetworkReport
 import dev.perf.analysis.model.ColdStartMeasurement
 import dev.perf.analysis.model.ExitSignalReport
+import dev.perf.analysis.model.SessionRateSummary
 import dev.perf.analysis.model.startup.StartupReport
 import dev.perf.analysis.model.startup.StartupStats
 import dev.perf.analysis.model.MemoryLeak
@@ -24,6 +25,11 @@ import java.io.File
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+
+// Play Console rate gates — thresholds above which an app is flagged as "bad behaviour"
+private const val ANR_GATE = 0.0047          // 0.47% ANR rate
+private const val CRASH_GATE = 0.0109        // 1.09% crash rate
+private const val SLOW_SESSION_GATE = 0.25   // 25% slow session rate
 
 /**
  * "Calm Tech" Markdown reporter: only emits sections when there are problems.
@@ -58,6 +64,7 @@ class MarkdownReporter(private val sourceLinker: SourceLinker? = null) {
             report.backgroundWifi?.let { appendWifiScansSection(it) }
             report.stuckWakelocks?.let { appendStuckWakelocksSection(it) }
             report.permissionDenials?.let { appendPermissionDenialsSection(it) }
+            extras.sessionRates?.let { appendSessionRatesSection(it) }
             report.perfettoTraceFile?.let {
                 appendLine()
                 appendLine("### Perfetto trace")
@@ -74,6 +81,7 @@ class MarkdownReporter(private val sourceLinker: SourceLinker? = null) {
 
         if (report.thresholdBreaches.isNotEmpty()) appendThresholdBreaches(report.thresholdBreaches)
         report.exitSignalReport?.takeIf { it.hasExits }?.let { appendExitSignalsSection(it) }
+        extras.sessionRates?.let { appendSessionRatesSection(it) }
         report.wakelockReport?.let { appendWakelocksSection(it) }
         report.startup?.let { appendStartupSection(it) }
             ?: report.coldStart?.let { appendColdStartSection(it) }
@@ -207,6 +215,41 @@ class MarkdownReporter(private val sourceLinker: SourceLinker? = null) {
         VitalsPlaybook.coldStartSection().forEach { appendLine(it) }
         appendLine(VitalsPlaybook.sourceFooter(VitalsMetric.COLD_START))
         appendLine()
+    }
+
+    private fun StringBuilder.appendSessionRatesSection(s: SessionRateSummary) {
+        appendLine()
+        appendLine("## Session Rates (rolling ${s.windowSize}-run window)")
+        appendLine()
+        appendLine(
+            "> Approximate signal — NOT Play Console parity. Local rates are computed over the " +
+                "last ${s.windowSize} `perf run` invocations on this machine; Play Console rates are " +
+                "fleet-wide session percentages with fundamentally different denominators.",
+        )
+        appendLine()
+        appendLine("| Metric | Rate | Play Console Gate | Status |")
+        appendLine("|--------|------|-------------------|--------|")
+        appendLine("| ANR rate | ${"%.2f".format(s.anrRate * 100)}% | >0.47% | ${rateStatus(s.anrRate, ANR_GATE)} |")
+        appendLine("| Crash rate | ${"%.2f".format(s.crashRate * 100)}% | >1.09% | ${rateStatus(s.crashRate, CRASH_GATE)} |")
+        appendLine("| Slow session rate | ${"%.2f".format(s.slowSessionRate * 100)}% | >25.00% | ${rateStatus(s.slowSessionRate, SLOW_SESSION_GATE)} |")
+        appendLine()
+        appendLine("_Window: ${s.totalRuns} runs._")
+        appendLine()
+        VitalsPlaybook.playConsoleLimitationsBanner().forEach { appendLine(it) }
+        if (s.hasExitSignalsCaveat) {
+            appendLine()
+            appendLine(
+                "> Some runs in this window had `--exit-signals` (exitSignals engine) disabled, " +
+                    "so ANR and crash rates may underreport. Re-run with `--exit-signals` consistently for accurate results.",
+            )
+            appendLine()
+        }
+    }
+
+    private fun rateStatus(rate: Double, gate: Double): String = when {
+        rate >= gate -> "✗ OVER"
+        rate >= gate * 0.5 -> "⚠ NEAR"
+        else -> "✓ PASS"
     }
 
     private fun StringBuilder.appendAndroidCliSection(extras: ReportRenderExtras) {

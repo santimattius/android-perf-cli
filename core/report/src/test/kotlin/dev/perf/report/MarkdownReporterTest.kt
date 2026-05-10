@@ -21,6 +21,7 @@ import dev.perf.analysis.model.StuckWakelockReport
 import dev.perf.analysis.model.WakelockEntry
 import dev.perf.analysis.model.WakelockReport
 import dev.perf.analysis.model.WifiScanReport
+import dev.perf.analysis.model.SessionRateSummary
 import dev.perf.report.ReportRenderExtras
 import dev.perf.report.source.SourceLinker
 import dev.perf.report.vitals.VitalsPlaybook
@@ -777,5 +778,97 @@ class MarkdownReporterTest {
         message = "Choreographer skipped 50 frames",
         hintType = PotentialAnrHintType.CHOREOGRAPHER_SKIPPED_FRAMES,
         detail = "01-15 10:00:00.100  1234  1235 I Choreographer: Skipped 50 frames!  The application may be doing too much work on its main thread.",
+    )
+
+    // ── T-5.1 RED: Session Rates section ─────────────────────────────────────
+
+    @Test
+    fun `session rates section rendered when sessionRates is non-null`() {
+        val rates = aSessionRateSummary()
+        val output = MarkdownReporter().render(
+            report = cleanReport(),
+            extras = ReportRenderExtras(sessionRates = rates),
+        )
+
+        assertContains(output, "Session Rates (rolling")
+    }
+
+    @Test
+    fun `session rates section omitted when sessionRates is null`() {
+        val output = MarkdownReporter().render(
+            report = cleanReport(),
+            extras = ReportRenderExtras(sessionRates = null),
+        )
+
+        assertFalse(output.contains("Session Rates"), "Section must not render when sessionRates is null")
+    }
+
+    @Test
+    fun `session rates section renders exit signals caveat when hasExitSignalsCaveat is true`() {
+        val rates = aSessionRateSummary(hasExitSignalsCaveat = true)
+        val output = MarkdownReporter().render(
+            report = cleanReport(),
+            extras = ReportRenderExtras(sessionRates = rates),
+        )
+
+        assertTrue(
+            output.contains("exitSignals", ignoreCase = true) || output.contains("exit-signals", ignoreCase = true),
+            "Expected caveat note mentioning exitSignals when hasExitSignalsCaveat is true",
+        )
+    }
+
+    @Test
+    fun `session rates section shows PASS status when rate is below gate`() {
+        // ANR rate 0.0% is below the 0.47% gate → PASS
+        val rates = aSessionRateSummary(anrRate = 0.0)
+        val output = MarkdownReporter().render(
+            report = cleanReport(),
+            extras = ReportRenderExtras(sessionRates = rates),
+        )
+
+        assertContains(output, "PASS")
+    }
+
+    @Test
+    fun `session rates section shows OVER status when rate is at or above gate`() {
+        // ANR rate 100% is well above the 0.47% gate → OVER
+        val rates = aSessionRateSummary(anrRate = 1.0)
+        val output = MarkdownReporter().render(
+            report = cleanReport(),
+            extras = ReportRenderExtras(sessionRates = rates),
+        )
+
+        assertContains(output, "OVER")
+    }
+
+    @Test
+    fun `session rates section shows NEAR status when rate is within 50 percent of gate`() {
+        // ANR gate = 0.47% = 0.0047. NEAR threshold = gate * 0.5 = 0.00235.
+        // Set rate to 0.003 (0.3%) which is >= 50% of gate but < gate.
+        val rates = aSessionRateSummary(anrRate = 0.003)
+        val output = MarkdownReporter().render(
+            report = cleanReport(),
+            extras = ReportRenderExtras(sessionRates = rates),
+        )
+
+        assertContains(output, "NEAR")
+    }
+
+    // ── Session Rates helpers ──────────────────────────────────────────────────
+
+    private fun aSessionRateSummary(
+        totalRuns: Int = 10,
+        anrRate: Double = 0.0,
+        crashRate: Double = 0.0,
+        slowSessionRate: Double = 0.0,
+        windowSize: Int = 30,
+        hasExitSignalsCaveat: Boolean = false,
+    ) = SessionRateSummary(
+        totalRuns = totalRuns,
+        anrRate = anrRate,
+        crashRate = crashRate,
+        slowSessionRate = slowSessionRate,
+        windowSize = windowSize,
+        hasExitSignalsCaveat = hasExitSignalsCaveat,
     )
 }

@@ -13,6 +13,10 @@ import com.github.ajalt.clikt.parameters.types.int
 import dev.perf.adb.AdbDevice
 import dev.perf.adb.EmulatorManager
 import dev.perf.analysis.MonitorConfig
+import dev.perf.analysis.model.ExitType
+import dev.perf.cli.history.HistoryStore
+import dev.perf.cli.history.RateCalculator
+import dev.perf.cli.history.SessionHistoryEntry
 import dev.perf.analysis.PerfWatchdog
 import dev.perf.analysis.screenshot.ScreenshotCapture
 import dev.perf.analysis.perfetto.PerfettoCapture
@@ -154,6 +158,11 @@ class RunCommand : CliktCommand(
     private val artifactsDir: File? by option(
         "--artifacts-dir",
         help = "Store screenshots and pulled trace here (default: directory next to `-o`).",
+    ).file(canBeFile = false)
+
+    private val historyDir: File? by option(
+        "--history-dir",
+        help = "Override session history directory (default: ~/.config/perf-cli/history). Use in CI.",
     ).file(canBeFile = false)
 
     private val buildVariant: String? by option(
@@ -382,6 +391,13 @@ class RunCommand : CliktCommand(
                     )
 
                 val generatedAt = Instant.now()
+                val timestampIso = isoInstant(generatedAt)
+
+                // T-6.4: Load prior session window and compute rolling rates (best-effort)
+                val store = HistoryStore(historyDir ?: HistoryStore.defaultBaseDir())
+                val priorEntries = runCatching { store.loadWindow(packageName, 30) }.getOrDefault(emptyList())
+                val sessionRates = if (priorEntries.size >= 2) RateCalculator.compute(priorEntries, 30) else null
+
                 val extras =
                     ReportRenderExtras(
                         androidCliDocsSnippet = if (!skipAndroidDocs) {
@@ -391,7 +407,7 @@ class RunCommand : CliktCommand(
                         },
                         sessionMeta =
                             ReportSessionMeta(
-                                generatedAtIso = isoInstant(generatedAt),
+                                generatedAtIso = timestampIso,
                                 monitorWindowStartIso = isoInstant(monitorStartedAt),
                                 monitorWindowEndIso = isoInstant(monitorEndedAt),
                                 scenarioLabel = scenarioConfig?.name,
@@ -400,11 +416,27 @@ class RunCommand : CliktCommand(
                                     ignoreCase = true,
                                 ),
                             ),
+                        sessionRates = sessionRates,
                     )
 
                 ConsoleReporter(terminal, linker).print(report, extras)
                 MarkdownReporter(linker).write(report, output, extras)
                 echo("→ Report saved to ${output.absolutePath}")
+
+                // T-6.5: Append this run to history (best-effort — failure must NOT cause exit code 1)
+                runCatching {
+                    store.append(
+                        buildHistoryEntry(
+                            report = report,
+                            packageName = packageName,
+                            exitSignalsEnabled = mergedExitSignals,
+                            scenarioLabel = scenarioConfig?.name,
+                            timestampIso = timestampIso,
+                        ),
+                    )
+                }.onFailure { err ->
+                    echo("⚠ Failed to append session history: ${err.message}", err = true)
+                }
 
                 if (report.thresholdBreaches.isNotEmpty()) {
                     throw ProgramResult(1)
@@ -606,5 +638,37 @@ private fun buildStartupCaptureConfig(
                 maxWarmStartMs = th.maxWarmStartMs,
                 maxHotStartMs = th.maxHotStartMs,
             ),
+    )
+}
+
+/**
+ * Maps a [dev.perf.analysis.PerfReport] to a [SessionHistoryEntry] for history persistence.
+ *
+ * Extracted as a top-level `internal` function so it can be unit-tested directly without
+ * spinning up a Clikt command invocation (Clikt's `run()` requires a full command context).
+ *
+ * GraalVM AOT-safe: no reflection, explicit types only.
+ */
+internal fun buildHistoryEntry(
+    report: dev.perf.analysis.PerfReport,
+    packageName: String,
+    exitSignalsEnabled: Boolean,
+    scenarioLabel: String?,
+    timestampIso: String,
+): SessionHistoryEntry {
+    val anrCount = report.exitSignalReport?.events?.count { it.exitType == ExitType.ANR } ?: 0
+    val crashCount = report.exitSignalReport?.events?.count { it.exitType == ExitType.CRASH } ?: 0
+    return SessionHistoryEntry(
+        packageName = packageName,
+        runId = "$timestampIso-${java.util.UUID.randomUUID()}",
+        timestampIso = timestampIso,
+        anrCount = anrCount,
+        crashCount = crashCount,
+        totalFrames = report.renderingIncident.totalFrames,
+        slowFrames = report.renderingIncident.slowFrames,
+        frozenFrames = report.renderingIncident.frozenFrames,
+        exitSignalsEnabled = exitSignalsEnabled,
+        scenarioLabel = scenarioLabel,
+        coldStartP50Ms = report.startup?.cold?.p50Ms,
     )
 }
