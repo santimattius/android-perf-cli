@@ -95,6 +95,12 @@ class PerfWatchdog(
             captureBaselines()
         }
 
+        // Capture baselines AFTER reset (ordering is critical for batterystats accuracy).
+        // Job is stored so stop() can await completion before computing deltas.
+        baselineJob = scope.launch {
+            captureBaselines()
+        }
+
         if (!monitor.strictMode && !monitor.anrHints) {
             return
         }
