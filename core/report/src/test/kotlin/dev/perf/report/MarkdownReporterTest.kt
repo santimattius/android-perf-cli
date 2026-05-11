@@ -22,6 +22,9 @@ import dev.perf.analysis.model.WakelockEntry
 import dev.perf.analysis.model.WakelockReport
 import dev.perf.analysis.model.WifiScanReport
 import dev.perf.analysis.model.SessionRateSummary
+import dev.perf.analysis.score.PerfScore
+import dev.perf.analysis.score.PerfScoreTier
+import dev.perf.analysis.score.SignalScore
 import dev.perf.report.ReportRenderExtras
 import dev.perf.report.source.SourceLinker
 import dev.perf.report.vitals.VitalsPlaybook
@@ -761,6 +764,96 @@ class MarkdownReporterTest {
         uid = uid,
         rawLine = rawLine,
     )
+
+    // ── T-11.1: Perf Score section ────────────────────────────────────────────
+
+    @Test
+    fun `perfScore null - output does not contain Perf Score heading`() {
+        val output = MarkdownReporter().render(cleanReport().copy(perfScore = null))
+        assertFalse(output.contains("## Perf Score"), "Section must be absent when perfScore is null")
+    }
+
+    @Test
+    fun `perfScore non-null - output contains Perf Score heading`() {
+        val score = aPerfScore(score = 70, tier = PerfScoreTier.GOOD)
+        val output = MarkdownReporter().render(cleanReport().copy(perfScore = score))
+        assertContains(output, "## Perf Score")
+    }
+
+    @Test
+    fun `perfScore 70 - ASCII bar contains 7 filled blocks`() {
+        val score = aPerfScore(score = 70, tier = PerfScoreTier.GOOD)
+        val output = MarkdownReporter().render(cleanReport().copy(perfScore = score))
+        assertContains(output, "███████░░░")
+    }
+
+    @Test
+    fun `perfScore 100 - ASCII bar is fully filled`() {
+        val score = aPerfScore(score = 100, tier = PerfScoreTier.GOOD)
+        val output = MarkdownReporter().render(cleanReport().copy(perfScore = score))
+        assertContains(output, "██████████")
+    }
+
+    @Test
+    fun `perfScore 0 - ASCII bar is all empty`() {
+        val score = aPerfScore(score = 0, tier = PerfScoreTier.BAD)
+        val output = MarkdownReporter().render(cleanReport().copy(perfScore = score))
+        assertContains(output, "░░░░░░░░░░")
+    }
+
+    @Test
+    fun `inactive signal row shows dash in sub-score cell`() {
+        val inactiveSignal = SignalScore(signal = "startup", subScore = 0, weight = 15, active = false)
+        val score = aPerfScore(score = 80, tier = PerfScoreTier.GOOD, extraSignals = listOf(inactiveSignal))
+        val output = MarkdownReporter().render(cleanReport().copy(perfScore = score))
+        // The row for an inactive signal should show — not a number in sub-score
+        assertTrue(
+            output.contains("| startup | — |") || output.contains("| startup | —"),
+            "Inactive signal row must show '—' in sub-score cell. Output:\n$output",
+        )
+    }
+
+    @Test
+    fun `activeSignalCount less than 3 - low signal warning present`() {
+        val score = aPerfScore(score = 80, tier = PerfScoreTier.GOOD, activeSignalCount = 2)
+        val output = MarkdownReporter().render(cleanReport().copy(perfScore = score))
+        assertTrue(
+            output.contains("fewer than 3 signals") || output.contains("⚠"),
+            "Low-signal warning must be present when activeSignalCount < 3",
+        )
+    }
+
+    @Test
+    fun `activeSignalCount 3 or more - low signal warning absent`() {
+        val score = aPerfScore(score = 80, tier = PerfScoreTier.GOOD, activeSignalCount = 3)
+        val output = MarkdownReporter().render(cleanReport().copy(perfScore = score))
+        assertFalse(
+            output.contains("fewer than 3 signals"),
+            "Low-signal warning must NOT be present when activeSignalCount >= 3",
+        )
+    }
+
+    // ── Perf Score helpers ────────────────────────────────────────────────────
+
+    private fun aPerfScore(
+        score: Int,
+        tier: PerfScoreTier,
+        activeSignalCount: Int = 3,
+        extraSignals: List<SignalScore> = emptyList(),
+    ): PerfScore {
+        val defaultSignals = listOf(
+            SignalScore("exitSignals", 80, 30, true),
+            SignalScore("rendering", 80, 20, true),
+            SignalScore("strictMode+anrHints", 100, 5, true),
+        )
+        val breakdown = (defaultSignals + extraSignals).sortedByDescending { it.weight }
+        return PerfScore(
+            score = score,
+            tier = tier,
+            breakdown = breakdown,
+            activeSignalCount = activeSignalCount,
+        )
+    }
 
     private fun anExitSignalReport(exitType: ExitType) = ExitSignalReport(
         events = listOf(

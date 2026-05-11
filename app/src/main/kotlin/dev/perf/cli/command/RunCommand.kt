@@ -36,6 +36,8 @@ import dev.perf.cli.config.saveConfig
 import dev.perf.cli.docs.AndroidCliDocsRunner
 import dev.perf.cli.error.runFriendly
 import dev.perf.cli.sdk.AndroidSdkLocator
+import dev.perf.analysis.score.PerfScore
+import dev.perf.analysis.score.PerfScoreCalculator
 import dev.perf.cli.scenario.EngineConfig
 import dev.perf.cli.scenario.GradleBuildConfig
 import dev.perf.cli.scenario.PerfettoCoverage
@@ -169,6 +171,11 @@ class RunCommand : CliktCommand(
         "--build-variant",
         help = "With `--project-dir`, run `gradlew :module:assemble<Variant>` first (`debug` or `release`).",
     )
+
+    private val minScore: Int? by option(
+        "--min-score",
+        help = "Fail the run when the perf score falls below this value (0–100).",
+    ).int()
 
     override fun run(): Unit = runFriendly {
         runBlocking {
@@ -398,6 +405,10 @@ class RunCommand : CliktCommand(
                 val priorEntries = runCatching { store.loadWindow(packageName, 30) }.getOrDefault(emptyList())
                 val sessionRates = if (priorEntries.size >= 2) RateCalculator.compute(priorEntries, 30) else null
 
+                // T-12.2: Compute perf score and attach to report
+                val perfScore = PerfScoreCalculator.compute(report, sessionRates)
+                report = report.copy(perfScore = perfScore)
+
                 val extras =
                     ReportRenderExtras(
                         androidCliDocsSnippet = if (!skipAndroidDocs) {
@@ -438,9 +449,21 @@ class RunCommand : CliktCommand(
                     echo("⚠ Failed to append session history: ${err.message}", err = true)
                 }
 
-                if (report.thresholdBreaches.isNotEmpty()) {
-                    throw ProgramResult(1)
+                // T-12.3: Two independent exit gates — score gate + threshold breach gate
+                var shouldFail = false
+
+                val (minScoreMessage, minScoreFail) = evaluateMinScore(minScore, perfScore)
+                if (minScoreFail) {
+                    echo(minScoreMessage!!, err = true)
+                    shouldFail = true
                 }
+
+                if (report.thresholdBreaches.isNotEmpty()) {
+                    echo("Run failed: ${report.thresholdBreaches.size} threshold breach(es).", err = true)
+                    shouldFail = true
+                }
+
+                if (shouldFail) throw ProgramResult(1)
             }
         }
     }
@@ -649,6 +672,26 @@ private fun buildStartupCaptureConfig(
  *
  * GraalVM AOT-safe: no reflection, explicit types only.
  */
+/**
+ * Evaluates the `--min-score` gate.
+ *
+ * Returns a [Pair] of (errorMessage, shouldFail):
+ * - If [minScore] is null, the gate is disabled → (null, false).
+ * - If [perfScore].score >= [minScore], the gate passes → (null, false).
+ * - If [perfScore].score < [minScore], the gate fires → (message, true).
+ *
+ * Extracted as a top-level `internal` function so it can be unit-tested without
+ * spinning up a full Clikt command invocation.
+ */
+internal fun evaluateMinScore(minScore: Int?, perfScore: PerfScore): Pair<String?, Boolean> {
+    if (minScore == null) return null to false
+    return if (perfScore.score < minScore) {
+        "Perf score ${perfScore.score} is below minimum $minScore — failing run." to true
+    } else {
+        null to false
+    }
+}
+
 internal fun buildHistoryEntry(
     report: dev.perf.analysis.PerfReport,
     packageName: String,
