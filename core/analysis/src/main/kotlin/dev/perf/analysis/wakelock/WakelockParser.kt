@@ -1,5 +1,6 @@
 package dev.perf.analysis.wakelock
 
+import dev.perf.analysis.batterystats.BatterystatsBlocks
 import dev.perf.analysis.model.WakelockEntry
 import dev.perf.analysis.model.WakelockReport
 
@@ -16,7 +17,7 @@ internal object WakelockParser {
      * Returns null when the dump does not contain a matching UID section.
      */
     fun parse(raw: String, packageName: String): WakelockReport? {
-        val block = extractUidBlock(raw, packageName) ?: return null
+        val block = BatterystatsBlocks.extractUidBlock(raw, packageName) ?: return null
         val entries =
             WAKELOCK_LINE.findAll(block).mapNotNull { m ->
                 val name = m.groupValues[1].trim()
@@ -43,22 +44,4 @@ internal object WakelockParser {
             (n * mult).toLong()
         }
 
-    private fun extractUidBlock(raw: String, packageName: String): String? {
-        val lines = raw.lines()
-        val starts = lines.mapIndexedNotNull { idx, line ->
-            if (line.trimStart().startsWith("Uid ")) idx else null
-        }
-        if (starts.isEmpty()) {
-            return raw.takeIf { it.contains(packageName, ignoreCase = true) }
-        }
-        for (i in starts.indices) {
-            val from = starts[i]
-            val toExclusive = starts.getOrNull(i + 1) ?: lines.size
-            val slice = lines.subList(from, toExclusive).joinToString("\n")
-            if (slice.contains(packageName, ignoreCase = true)) {
-                return slice
-            }
-        }
-        return null
-    }
 }

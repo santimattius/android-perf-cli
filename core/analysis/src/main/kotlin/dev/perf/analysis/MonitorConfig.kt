@@ -19,4 +19,13 @@ data class MonitorConfig(
      * Any confirmed exit is reported as CRITICAL and causes the CLI to exit non-zero.
      */
     val exitSignals: Boolean = false,
+    /** When true, measures background network traffic via `dumpsys netstats --uid N`. INFO-only in v1. */
+    val backgroundNetwork: Boolean = false,
+    /** When true, measures background Wi-Fi scan count via `dumpsys batterystats`. INFO-only in v1. */
+    val backgroundWifi: Boolean = false,
+    /**
+     * When true, diffs wakelock snapshots to detect stuck partial wake locks. Requires [wakelocks].
+     * INFO-only in v1.
+     */
+    val stuckWakelocks: Boolean = false,
 )

@@ -175,6 +175,13 @@ class RunCommand : CliktCommand(
             val mergedWakelocks = resolved.engines.wakelocks || (scenarioConfig == null && wakelocksFlag)
             val mergedExitSignals = resolved.engines.exitSignals || (scenarioConfig == null && exitSignalsFlag)
 
+            // Validate engine dependency constraints before constructing MonitorConfig
+            val mergedEngines = resolved.engines.copy(
+                wakelocks = mergedWakelocks,
+                exitSignals = mergedExitSignals,
+            )
+            validateEngineConfig(mergedEngines)
+
             val presetEnum =
                 resolveTracingPreset(
                     resolved.perfettoPreset,
@@ -312,13 +319,11 @@ class RunCommand : CliktCommand(
                     }
                 }
 
-                val monitor = MonitorConfig(
-                    strictMode = resolved.engines.strictMode,
-                    anrHints = resolved.engines.anrHints,
-                    rendering = resolved.engines.rendering,
-                    startup = mergedStartup,
-                    wakelocks = mergedWakelocks,
-                    exitSignals = mergedExitSignals,
+                val monitor = buildMonitorConfig(
+                    resolved.engines,
+                    mergedWakelocks = mergedWakelocks,
+                    mergedExitSignals = mergedExitSignals,
+                    mergedStartup = mergedStartup,
                 )
 
                 val monitorStartedAt = Instant.now()
@@ -527,6 +532,49 @@ class RunCommand : CliktCommand(
         data class Skipped(val reason: String) : PerfettoOutcome()
     }
 }
+
+/**
+ * Validates the merged engine configuration before starting a run.
+ *
+ * [stuckWakelocks] depends on [wakelocks] being enabled because:
+ * - Stuck detection requires a pre-window wakelock baseline taken after `--reset`.
+ * - Without [wakelocks]=true, no `--reset` is issued, so the baseline would be stale
+ *   and the delta meaningless.
+ *
+ * The function throws [CliktError] when validation fails — Clikt will format and print
+ * the error message before exiting non-zero.
+ */
+internal fun validateEngineConfig(config: EngineConfig) {
+    if (config.stuckWakelocks && !config.wakelocks) {
+        throw CliktError(
+            "stuckWakelocks requires wakelocks=true " +
+                "(stuckWakelocks uses the batterystats baseline from WakelockCapture).",
+        )
+    }
+}
+
+/**
+ * Constructs a [MonitorConfig] from the merged [EngineConfig] and resolved flag overrides.
+ *
+ * Extracted from [RunCommand.run] to enable unit testing of the flag mapping without
+ * spinning up a full Clikt command invocation.
+ */
+internal fun buildMonitorConfig(
+    engines: EngineConfig,
+    mergedWakelocks: Boolean,
+    mergedExitSignals: Boolean,
+    mergedStartup: Boolean,
+): MonitorConfig = MonitorConfig(
+    strictMode = engines.strictMode,
+    anrHints = engines.anrHints,
+    rendering = engines.rendering,
+    startup = mergedStartup,
+    wakelocks = mergedWakelocks,
+    exitSignals = mergedExitSignals,
+    backgroundNetwork = engines.backgroundNetwork,
+    backgroundWifi = engines.backgroundWifi,
+    stuckWakelocks = engines.stuckWakelocks,
+)
 
 private fun buildStartupCaptureConfig(
     thresholds: ThresholdConfig,

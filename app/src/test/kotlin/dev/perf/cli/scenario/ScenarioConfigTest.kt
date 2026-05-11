@@ -173,6 +173,54 @@ class ScenarioConfigTest {
         assertEquals(3_600_000L, original.maxWakelockLongHeldMs)
     }
 
+    // ── T-5.1: Background Signal EngineConfig flags ────────────────────────────
+
+    @Test
+    fun `default EngineConfig has all three background signal flags false`() {
+        val config = EngineConfig()
+        assertFalse(config.backgroundNetwork, "backgroundNetwork should default to false")
+        assertFalse(config.backgroundWifi, "backgroundWifi should default to false")
+        assertFalse(config.stuckWakelocks, "stuckWakelocks should default to false")
+    }
+
+    @Test
+    fun `JSON with backgroundNetwork true deserializes correctly`() {
+        val file = scenarioFile(
+            """
+            {
+              "name": "bg-network-test",
+              "engines": { "backgroundNetwork": true }
+            }
+            """.trimIndent(),
+        )
+        val config = loadScenario(file)
+        assertTrue(config.engines.backgroundNetwork)
+        assertFalse(config.engines.backgroundWifi)
+        assertFalse(config.engines.stuckWakelocks)
+    }
+
+    @Test
+    fun `JSON with all three background flags enabled deserializes correctly`() {
+        val file = scenarioFile(
+            """
+            {
+              "name": "all-bg",
+              "engines": {
+                "wakelocks": true,
+                "backgroundNetwork": true,
+                "backgroundWifi": true,
+                "stuckWakelocks": true
+              }
+            }
+            """.trimIndent(),
+        )
+        val config = loadScenario(file)
+        assertTrue(config.engines.backgroundNetwork)
+        assertTrue(config.engines.backgroundWifi)
+        assertTrue(config.engines.stuckWakelocks)
+        assertTrue(config.engines.wakelocks)
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private fun scenarioFile(content: String): File {

@@ -1,6 +1,7 @@
 package dev.perf.report
 
 import dev.perf.analysis.PerfReport
+import dev.perf.analysis.model.BackgroundNetworkReport
 import dev.perf.analysis.model.ColdStartMeasurement
 import dev.perf.analysis.model.ExitSignalReport
 import dev.perf.analysis.model.startup.StartupReport
@@ -10,8 +11,10 @@ import dev.perf.analysis.model.PotentialAnrHint
 import dev.perf.analysis.model.RenderingIncident
 import dev.perf.analysis.model.Severity
 import dev.perf.analysis.model.StrictModeViolation
+import dev.perf.analysis.model.StuckWakelockReport
 import dev.perf.analysis.model.ThresholdBreach
 import dev.perf.analysis.model.WakelockReport
+import dev.perf.analysis.model.WifiScanReport
 import dev.perf.report.source.SourceLinker
 import dev.perf.report.source.StackFrameParser
 import dev.perf.report.vitals.VitalsMetric
@@ -50,6 +53,9 @@ class MarkdownReporter(private val sourceLinker: SourceLinker? = null) {
                 ?: report.coldStart?.let { appendColdStartSummary(it) }
             report.wakelockReport?.let { appendWakelocksSection(it) }
             report.exitSignalReport?.takeIf { it.hasExits }?.let { appendExitSignalsSection(it) }
+            report.backgroundNetwork?.let { appendBackgroundNetworkSection(it) }
+            report.backgroundWifi?.let { appendWifiScansSection(it) }
+            report.stuckWakelocks?.let { appendStuckWakelocksSection(it) }
             report.perfettoTraceFile?.let {
                 appendLine()
                 appendLine("### Perfetto trace")
@@ -92,6 +98,9 @@ class MarkdownReporter(private val sourceLinker: SourceLinker? = null) {
             appendRendering(report.renderingIncident)
             VitalsPlaybook.renderingSection().forEach { appendLine(it) }
         }
+        report.backgroundNetwork?.let { appendBackgroundNetworkSection(it) }
+        report.backgroundWifi?.let { appendWifiScansSection(it) }
+        report.stuckWakelocks?.let { appendStuckWakelocksSection(it) }
         appendPerfettoFooter(report)
         VitalsPlaybook.playConsoleLimitationsBanner().forEach { appendLine(it) }
         appendAndroidCliSection(extras)
@@ -248,6 +257,57 @@ class MarkdownReporter(private val sourceLinker: SourceLinker? = null) {
         appendLine("> Play Console bad-behaviour threshold: >5% of daily sessions with a partial wake lock held >1 h.")
         appendLine()
         appendLine(VitalsPlaybook.sourceFooter(VitalsMetric.EXCESSIVE_WAKELOCKS))
+        appendLine()
+    }
+
+    private fun StringBuilder.appendBackgroundNetworkSection(r: BackgroundNetworkReport) {
+        appendLine("## Background Network (INFO)")
+        appendLine()
+        appendLine("_${r.severity.badge()} — session-total network traffic for the package's UID._")
+        appendLine()
+        appendLine("> Note: ADB `dumpsys netstats` captures all UID traffic; foreground/background separation requires NetworkStatsManager.")
+        appendLine()
+        appendLine("| Metric | Value |")
+        appendLine("|--------|-------|")
+        appendLine("| RX bytes (delta) | ${r.rxBytesDelta} |")
+        appendLine("| TX bytes (delta) | ${r.txBytesDelta} |")
+        appendLine("| Window (ms) | ${r.durationMs} |")
+        appendLine()
+        appendLine(VitalsPlaybook.sourceFooter(VitalsMetric.BG_NETWORK))
+        appendLine()
+    }
+
+    private fun StringBuilder.appendWifiScansSection(r: WifiScanReport) {
+        appendLine("## Wi-Fi Scans (INFO)")
+        appendLine()
+        appendLine("_${r.severity.badge()} — Wi-Fi scans attributed to the package during the window._")
+        appendLine()
+        appendLine("| Metric | Value |")
+        appendLine("|--------|-------|")
+        appendLine("| Scan count (delta) | ${r.scanCountDelta} |")
+        appendLine("| Window (ms) | ${r.durationMs} |")
+        appendLine()
+        appendLine(VitalsPlaybook.sourceFooter(VitalsMetric.BG_WIFI))
+        appendLine()
+    }
+
+    private fun StringBuilder.appendStuckWakelocksSection(r: StuckWakelockReport) {
+        appendLine("## Stuck Wake Locks (INFO)")
+        appendLine()
+        appendLine("_${r.severity.badge()} — locks present at both session start and end with strictly increasing count._")
+        appendLine()
+        if (r.stuckEntries.isEmpty()) {
+            appendLine("No stuck wake locks detected.")
+        } else {
+            appendLine("| Name | Start count | End count | Δ duration (ms) |")
+            appendLine("|------|-------------|-----------|------------------|")
+            r.stuckEntries.forEach { e ->
+                val safeName = e.name.replace("|", "\\|")
+                appendLine("| `$safeName` | ${e.startCount} | ${e.endCount} | ${e.durationDeltaMs} |")
+            }
+        }
+        appendLine()
+        appendLine(VitalsPlaybook.sourceFooter(VitalsMetric.STUCK_WAKELOCK))
         appendLine()
     }
 
