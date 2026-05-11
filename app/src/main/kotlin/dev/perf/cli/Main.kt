@@ -1,6 +1,7 @@
 package dev.perf.cli
 
 import com.github.ajalt.clikt.core.subcommands
+import dev.perf.cli.command.HistoryCommand
 import dev.perf.cli.command.InitCommand
 import dev.perf.cli.command.RunCommand
 import dev.perf.cli.command.SdkCommand
@@ -22,5 +23,5 @@ class PerfCli : com.github.ajalt.clikt.core.CliktCommand(
 
 fun main(args: Array<String>) =
     PerfCli()
-        .subcommands(InitCommand(), SdkCommand(), RunCommand())
+        .subcommands(InitCommand(), SdkCommand(), RunCommand(), HistoryCommand())
         .main(args)
