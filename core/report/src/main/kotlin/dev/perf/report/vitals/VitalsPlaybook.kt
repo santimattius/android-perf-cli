@@ -23,6 +23,8 @@ enum class VitalsMetric(val url: String) {
     BG_NETWORK("https://developer.android.com/topic/performance/vitals/bg-network-usage"),
     BG_WIFI("https://developer.android.com/topic/performance/vitals/bg-wifi"),
     STUCK_WAKELOCK("https://developer.android.com/topic/performance/vitals/stuck-wakelock"),
+    PERMISSION_DENIAL("https://developer.android.com/topic/performance/vitals"),
+    SLOW_SESSION("https://developer.android.com/topic/performance/vitals/slow-session"),
 }
 
 /**
@@ -141,6 +143,14 @@ object VitalsPlaybook {
         "---",
         "",
         "**Note:** [Android Vitals]($VITALS_HUB) on Play aggregates user sessions and certification rules; offline CLI metrics are **signals**, not parity with Play dashboards.",
+        "",
+    )
+
+    fun permissionDenialSection(): List<String> = listOf(
+        "### Guidance (Vitals: Permission Denials)",
+        "- Review the denied permissions and ensure the app requests them at the right time with proper rationale UI.",
+        "- [App permissions overview](https://developer.android.com/guide/topics/permissions/overview)",
+        "- [Vitals hub]($VITALS_HUB)",
         "",
     )
 }

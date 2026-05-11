@@ -3,6 +3,8 @@ package dev.perf.cli.scenario
 import dev.perf.analysis.PerfReport
 import dev.perf.analysis.model.ColdStartMeasurement
 import dev.perf.analysis.model.MemoryLeak
+import dev.perf.analysis.model.PermissionDenial
+import dev.perf.analysis.model.PermissionDenialReport
 import dev.perf.analysis.model.RenderingIncident
 import dev.perf.analysis.model.Severity
 import dev.perf.analysis.model.StrictModeViolation
@@ -317,6 +319,44 @@ class ThresholdEvaluatorTest {
             "Severity should remain WARNING when only a session-percent breach fires")
         assertTrue(result.thresholdBreaches.any { it.message.contains("session", ignoreCase = true) },
             "Expected a session-percent breach in thresholdBreaches")
+    }
+
+    // ── Permission Denial Threshold (T-6.1) ──────────────────────────────────
+
+    @Test
+    fun `maxPermissionDenials_zero_oneDenial_emitsCriticalBreach`() {
+        val denial = PermissionDenial(
+            message = "Permission Denial: android.permission.READ_CONTACTS",
+            packageName = "com.example.app",
+            permission = "android.permission.READ_CONTACTS",
+            uid = 10050,
+            rawLine = "raw line",
+        )
+        val denialReport = PermissionDenialReport(denials = listOf(denial))
+        val report = reportWith().copy(permissionDenials = denialReport)
+
+        val breaches = ThresholdEvaluator.evaluate(report, ThresholdConfig(maxPermissionDenials = 0))
+
+        assertEquals(1, breaches.size)
+        assertEquals(Severity.CRITICAL, breaches.first().severity)
+        assertTrue(breaches.first().message.contains("permission denial", ignoreCase = true))
+    }
+
+    @Test
+    fun `maxPermissionDenials_null_noBreach`() {
+        val denial = PermissionDenial(
+            message = "Permission Denial: android.permission.READ_CONTACTS",
+            packageName = "com.example.app",
+            permission = "android.permission.READ_CONTACTS",
+            uid = 10050,
+            rawLine = "raw line",
+        )
+        val denialReport = PermissionDenialReport(denials = listOf(denial))
+        val report = reportWith().copy(permissionDenials = denialReport)
+
+        val breaches = ThresholdEvaluator.evaluate(report, ThresholdConfig(maxPermissionDenials = null))
+
+        assertTrue(breaches.none { it.message.contains("permission denial", ignoreCase = true) })
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

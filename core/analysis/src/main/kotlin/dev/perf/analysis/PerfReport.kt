@@ -11,6 +11,7 @@ import dev.perf.analysis.model.StrictModeViolation
 import dev.perf.analysis.model.ThresholdBreach
 import dev.perf.analysis.model.BackgroundNetworkReport
 import dev.perf.analysis.model.ExitSignalReport
+import dev.perf.analysis.model.PermissionDenialReport
 import dev.perf.analysis.model.StuckWakelockReport
 import dev.perf.analysis.model.WakelockReport
 import dev.perf.analysis.model.WifiScanReport
@@ -64,6 +65,15 @@ data class PerfReport(
      * disabled. INFO-only — does not affect [hasIssues] or [overallSeverity].
      */
     val stuckWakelocks: StuckWakelockReport? = null,
+    /**
+     * Permission denials captured from `ActivityManager:W` / `PackageManager:W` logcat, filtered by
+     * the target package's UID; null when the engine is disabled (`permissionDenials = false`).
+     *
+     * Design amendment: does NOT affect [hasIssues] or [overallSeverity] by default — denials are
+     * INFO/WARNING signals. Use [dev.perf.cli.scenario.ThresholdConfig.maxPermissionDenials] for
+     * optional CRITICAL escalation via [dev.perf.cli.scenario.ThresholdEvaluator].
+     */
+    val permissionDenials: PermissionDenialReport? = null,
 ) {
     val hasIssues: Boolean
         get() = strictModeViolations.isNotEmpty()

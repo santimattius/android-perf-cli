@@ -1,6 +1,7 @@
 package dev.perf.cli.scenario
 
 import dev.perf.analysis.PerfReport
+import dev.perf.analysis.model.PermissionDenialReport
 import dev.perf.analysis.model.Severity
 import dev.perf.analysis.model.ThresholdBreach
 import dev.perf.analysis.model.WakelockReport
@@ -109,6 +110,11 @@ object ThresholdEvaluator {
                     ),
                 )
             }
+
+            report.permissionDenials?.let { pd ->
+                evaluatePermissionDenials(pd, thresholds, this)
+            }
+
             val wl = report.wakelockReport ?: return@buildList
             val maxWakelockMs = thresholds.maxWakelockTimeMs
             if (maxWakelockMs != null && wl.totalDurationMs > maxWakelockMs) {
@@ -168,6 +174,21 @@ object ThresholdEvaluator {
                         "Aggregate duration: ${longHeldEntry.totalDurationMs}ms. " +
                         "Note: fleet session-% cannot be computed from a single run.",
                     severity = Severity.WARNING,
+                ),
+            )
+        }
+    }
+
+    private fun evaluatePermissionDenials(
+        pd: PermissionDenialReport,
+        thresholds: ThresholdConfig,
+        sink: MutableList<ThresholdBreach>,
+    ) {
+        val max = thresholds.maxPermissionDenials ?: return
+        if (pd.denials.size > max) {
+            sink.add(
+                ThresholdBreach(
+                    "Permission denials ${pd.denials.size} exceeds threshold of $max",
                 ),
             )
         }

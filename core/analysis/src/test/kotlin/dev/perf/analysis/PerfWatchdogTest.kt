@@ -10,6 +10,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.test.assertEquals
 
 class PerfWatchdogTest {
 
@@ -136,6 +137,63 @@ class PerfWatchdogTest {
         assertNull(report.backgroundNetwork)
         assertNull(report.backgroundWifi)
         assertNull(report.stuckWakelocks)
+    }
+
+    // T-5.2(a): permissionDenials=true → report.permissionDenials is non-null
+    @Test
+    fun `watchdog_permissionDenialsEnabled_reportPermissionDenialsNonNull`() = runTest(UnconfinedTestDispatcher()) {
+        val dumpsysOutput = "Package [com.example.app]:\n  userId=10050\n"
+        val denialLine = "01-15 10:00:00.100  1234  5678 W ActivityManager: Permission Denial: " +
+            "from ProcessRecord{abc123 1234:com.example.app/u0a50} (pid=1234, uid=10050) " +
+            "requires android.permission.READ_CONTACTS"
+
+        val fake = FakeAdbClient(
+            allowFailureHandler = { args ->
+                when {
+                    args.toList() == listOf("dumpsys", "package", "com.example.app") ->
+                        AdbShellResult(0, dumpsysOutput, "")
+                    else ->
+                        AdbShellResult(0, "", "")
+                }
+            },
+            streamSessions = listOf(
+                listOf(0L to denialLine), // permission denial stream
+            ),
+        )
+        val watchdog = PerfWatchdog(
+            device = fake,
+            packageName = "com.example.app",
+            monitor = MonitorConfig(strictMode = false, anrHints = false, rendering = false, permissionDenials = true),
+            scope = this,
+        )
+        watchdog.start()
+        val report = watchdog.stop()
+        assertNotNull(report.permissionDenials)
+    }
+
+    // T-5.2(b): permissionDenials=false → report.permissionDenials == null; dumpsys package never called
+    @Test
+    fun `watchdog_permissionDenialsDisabled_reportPermissionDenialsNull`() = runTest(UnconfinedTestDispatcher()) {
+        var dumpsysPackageCalled = false
+        val fake = FakeAdbClient(
+            allowFailureHandler = { args ->
+                if (args.toList() == listOf("dumpsys", "package", "com.example.app")) {
+                    dumpsysPackageCalled = true
+                }
+                AdbShellResult(0, "", "")
+            },
+            streamSessions = emptyList(),
+        )
+        val watchdog = PerfWatchdog(
+            device = fake,
+            packageName = "com.example.app",
+            monitor = MonitorConfig(strictMode = false, anrHints = false, rendering = false, permissionDenials = false),
+            scope = this,
+        )
+        watchdog.start()
+        val report = watchdog.stop()
+        assertNull(report.permissionDenials)
+        assertFalse(dumpsysPackageCalled, "dumpsys package should NOT be called when permissionDenials=false")
     }
 
     // TASK-28: exitSignals enabled + ANR line → report.exitSignalReport non-null with events

@@ -7,6 +7,7 @@ import dev.perf.analysis.model.ExitSignalReport
 import dev.perf.analysis.model.startup.StartupReport
 import dev.perf.analysis.model.startup.StartupStats
 import dev.perf.analysis.model.MemoryLeak
+import dev.perf.analysis.model.PermissionDenialReport
 import dev.perf.analysis.model.PotentialAnrHint
 import dev.perf.analysis.model.RenderingIncident
 import dev.perf.analysis.model.Severity
@@ -56,6 +57,7 @@ class MarkdownReporter(private val sourceLinker: SourceLinker? = null) {
             report.backgroundNetwork?.let { appendBackgroundNetworkSection(it) }
             report.backgroundWifi?.let { appendWifiScansSection(it) }
             report.stuckWakelocks?.let { appendStuckWakelocksSection(it) }
+            report.permissionDenials?.let { appendPermissionDenialsSection(it) }
             report.perfettoTraceFile?.let {
                 appendLine()
                 appendLine("### Perfetto trace")
@@ -101,6 +103,7 @@ class MarkdownReporter(private val sourceLinker: SourceLinker? = null) {
         report.backgroundNetwork?.let { appendBackgroundNetworkSection(it) }
         report.backgroundWifi?.let { appendWifiScansSection(it) }
         report.stuckWakelocks?.let { appendStuckWakelocksSection(it) }
+        report.permissionDenials?.let { appendPermissionDenialsSection(it) }
         appendPerfettoFooter(report)
         VitalsPlaybook.playConsoleLimitationsBanner().forEach { appendLine(it) }
         appendAndroidCliSection(extras)
@@ -308,6 +311,41 @@ class MarkdownReporter(private val sourceLinker: SourceLinker? = null) {
         }
         appendLine()
         appendLine(VitalsPlaybook.sourceFooter(VitalsMetric.STUCK_WAKELOCK))
+        appendLine()
+    }
+
+    private fun StringBuilder.appendPermissionDenialsSection(report: PermissionDenialReport) {
+        appendLine("## Permission Denials")
+        appendLine()
+        if (!report.hasDenials) {
+            appendLine("${report.severity.badge()} — no permission denials detected for the package's UID during this session.")
+            appendLine()
+            appendLine(VitalsPlaybook.sourceFooter(VitalsMetric.PERMISSION_DENIAL))
+            appendLine()
+            return
+        }
+        val n = report.denials.size
+        val plural = if (n == 1) "" else "s"
+        appendLine("${report.severity.badge()} — $n permission denial$plural detected for the package's UID during this session.")
+        appendLine()
+        appendLine(
+            "_Captured from `ActivityManager:W` and `PackageManager:W` system_server logs. " +
+                "Filtered by UID resolved at capture start. Denials degrade UX but do not crash " +
+                "the app — surfaced as WARNING regardless of count._",
+        )
+        appendLine()
+        appendLine("| Permission | UID | Raw line |")
+        appendLine("|------------|-----|----------|")
+        report.denials.take(30).forEach { d ->
+            val truncatedRaw = d.rawLine.take(160).replace("|", "\\|")
+            appendLine("| `${d.permission}` | ${d.uid} | $truncatedRaw |")
+        }
+        if (n > 30) {
+            appendLine()
+            appendLine("_${n - 30} more denials omitted._")
+        }
+        appendLine()
+        appendLine(VitalsPlaybook.sourceFooter(VitalsMetric.PERMISSION_DENIAL))
         appendLine()
     }
 
@@ -519,10 +557,14 @@ class MarkdownReporter(private val sourceLinker: SourceLinker? = null) {
         appendLine("|--------|-------|")
         appendLine("| Total frames | ${incident.totalFrames} |")
         appendLine("| Janky frames (>16ms) | **${incident.jankyFrames}** |")
+        val slowPct = if (incident.totalFrames > 0) incident.slowFrames * 100.0 / incident.totalFrames else 0.0
+        appendLine("| Slow frames (50–700ms) | **${incident.slowFrames}** (${"%.2f".format(slowPct)}% of session) |")
         appendLine("| Frozen frames (>700ms) | **${incident.frozenFrames}** |")
         appendLine("| p90 | ${incident.p90Ms.fmt()} ms |")
         appendLine("| p95 | ${incident.p95Ms.fmt()} ms |")
         appendLine("| p99 | ${incident.p99Ms.fmt()} ms |")
+        appendLine()
+        appendLine("_Note: \"Slow frames\" approximates Play Console's slow-session bucket from a single device run. Play Console aggregates this across many users — single-run percentages are signals, not parity._")
         appendLine()
         appendLine(VitalsPlaybook.sourceFooter(VitalsMetric.SLOW_RENDERING))
         appendLine()
