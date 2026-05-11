@@ -4,12 +4,40 @@ import dev.perf.analysis.model.PotentialAnrHintType
 import dev.perf.analysis.model.StrictModeViolation
 
 /**
+ * Official Android Vitals metric enum. Each member maps to an authoritative documentation URL.
+ *
+ * All URLs are `const val` members of the enum — GraalVM AOT-safe, no reflection, no runtime lookup.
+ * Using a closed enum enables exhaustive `when` at call sites and a single-file URL update path.
+ */
+enum class VitalsMetric(val url: String) {
+    COLD_START("https://developer.android.com/topic/performance/vitals/launch-time"),
+    WARM_START("https://developer.android.com/topic/performance/vitals/launch-time"),
+    HOT_START("https://developer.android.com/topic/performance/vitals/launch-time"),
+    SLOW_RENDERING("https://developer.android.com/topic/performance/vitals/render"),
+    FROZEN_FRAMES("https://developer.android.com/topic/performance/vitals/frozen-frames"),
+    ANR("https://developer.android.com/topic/performance/vitals/anr"),
+    CRASH("https://developer.android.com/topic/performance/vitals/crash"),
+    EXCESSIVE_WAKELOCKS("https://developer.android.com/topic/performance/vitals/wakelocks"),
+    STRICT_MODE("https://developer.android.com/topic/performance/vitals"),
+    EXIT_INFO("https://developer.android.com/topic/performance/vitals"),
+}
+
+/**
  * Curated **static** links to official Android / Play guidance (no network I/O).
  * Complements optional `android docs search` output from the host CLI.
  */
 object VitalsPlaybook {
 
     const val VITALS_HUB = "https://developer.android.com/topic/performance/vitals"
+
+    /**
+     * Returns a single Markdown line attributing the given [metric] to the official Android Vitals
+     * documentation. The URL is a static string — no runtime lookup; AOT-safe.
+     *
+     * Example output: `_Source: [Android Vitals](https://developer.android.com/topic/performance/vitals/launch-time)._`
+     */
+    fun sourceFooter(metric: VitalsMetric): String =
+        "_Source: [Android Vitals](${metric.url})._"
 
     fun coldStartSection(): List<String> = listOf(
         "### Guidance (Vitals: launch)",

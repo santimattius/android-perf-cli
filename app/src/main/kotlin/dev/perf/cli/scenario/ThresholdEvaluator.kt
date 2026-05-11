@@ -126,7 +126,52 @@ object ThresholdEvaluator {
                     ),
                 )
             }
+            evaluateWakelockSessionPercent(wl, thresholds, this)
         }
+
+    /**
+     * Single-run approximation of the Play Console wake-lock session-percentage rule.
+     *
+     * Play Console definition: >5% of daily sessions contain a partial wake lock held for >1 hour
+     * is a "bad behaviour" threshold. A single CLI run cannot compute a fleet percentage.
+     *
+     * Approximation: if any partial wake lock entry has `totalDurationMs > maxWakelockLongHeldMs`
+     * (default: 1 hour = 3,600,000ms) in this run, we treat this run as 100% of sessions with a
+     * long-held wake lock. Because 100% > the 5% threshold, a WARNING breach is emitted.
+     *
+     * Severity is intentionally WARNING (not CRITICAL) because this is an approximation: a single
+     * run with a long wake lock does not confirm fleet-wide session-percentage behaviour.
+     *
+     * Note: `totalDurationMs` per entry is the aggregate duration for one wake lock name across all
+     * holds in the session; we use ">1h aggregate per name" as a proxy for ">1h single hold".
+     *
+     * @param wl The wake lock report from the current run.
+     * @param thresholds The threshold config containing [ThresholdConfig.maxWakelockSessionPercent]
+     *   and [ThresholdConfig.maxWakelockLongHeldMs].
+     * @param sink The mutable list to add breaches to.
+     */
+    private fun evaluateWakelockSessionPercent(
+        wl: WakelockReport,
+        thresholds: ThresholdConfig,
+        sink: MutableList<ThresholdBreach>,
+    ) {
+        // Guard: only evaluate when the session-percent threshold is configured
+        val maxSessionPercent = thresholds.maxWakelockSessionPercent ?: return
+        val maxLongHeld = thresholds.maxWakelockLongHeldMs ?: VitalsDefaults.WAKELOCK_LONG_HELD_MS
+
+        val longHeldEntry = wl.entries.find { it.totalDurationMs > maxLongHeld }
+        if (longHeldEntry != null) {
+            sink.add(
+                ThresholdBreach(
+                    message = "Wake lock '${longHeldEntry.name}' held >${maxLongHeld}ms in this run " +
+                        "(single-run approximation of Play Console >${maxSessionPercent}% sessions / >1h rule). " +
+                        "Aggregate duration: ${longHeldEntry.totalDurationMs}ms. " +
+                        "Note: fleet session-% cannot be computed from a single run.",
+                    severity = Severity.WARNING,
+                ),
+            )
+        }
+    }
 
     private fun wakelockSeverity(base: WakelockReport, breaches: List<ThresholdBreach>): Severity {
         if (base.entries.isEmpty()) {

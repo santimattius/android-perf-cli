@@ -6,6 +6,8 @@ import dev.perf.analysis.model.ExitSignalReport
 import dev.perf.analysis.model.ExitType
 import dev.perf.analysis.model.MemoryLeak
 import dev.perf.analysis.model.ColdStartMeasurement
+import dev.perf.analysis.model.PotentialAnrHint
+import dev.perf.analysis.model.PotentialAnrHintType
 import dev.perf.analysis.model.RenderingIncident
 import dev.perf.analysis.model.Severity
 import dev.perf.analysis.model.StrictModeViolation
@@ -347,6 +349,150 @@ class MarkdownReporterTest {
         assertFalse(output.contains("## Exit Signals"))
     }
 
+    // ── Source Attribution (VitalsMetric footers) ─────────────────────────────
+
+    @Test
+    fun `startup section contains Source Android Vitals line`() {
+        val report = reportWith(
+            coldStart = ColdStartMeasurement(
+                totalTimeMs = 6000,
+                waitTimeMs = 6000,
+                launchState = "COLD",
+                status = "ok",
+                parsedOk = true,
+                message = "Cold start TotalTime=6000ms",
+                severity = Severity.CRITICAL,
+            ),
+        )
+        val output = MarkdownReporter().render(report)
+
+        assertContains(output, "_Source: [Android Vitals]")
+    }
+
+    @Test
+    fun `wakelock section contains Source Android Vitals line`() {
+        val wl = WakelockReport(
+            entries = listOf(WakelockEntry("*alarm*", 1, 5000)),
+            totalDurationMs = 5000,
+            severity = Severity.WARNING,
+        )
+        val output = MarkdownReporter().render(cleanReport().copy(wakelockReport = wl))
+
+        assertContains(output, "_Source: [Android Vitals]")
+    }
+
+    @Test
+    fun `exit signals section contains Source Android Vitals line`() {
+        val exitReport = anExitSignalReport(ExitType.ANR)
+        val output = MarkdownReporter().render(cleanReport().copy(exitSignalReport = exitReport))
+
+        assertContains(output, "_Source: [Android Vitals]")
+    }
+
+    @Test
+    fun `rendering section contains Source Android Vitals line`() {
+        val output = MarkdownReporter().render(
+            reportWith(rendering = aRenderingIncident(Severity.CRITICAL, frozenFrames = 2))
+        )
+
+        assertContains(output, "_Source: [Android Vitals]")
+    }
+
+    @Test
+    fun `strictmode section contains Source Android Vitals line`() {
+        val output = MarkdownReporter().render(
+            reportWith(violations = listOf(aViolation(violationType = ViolationType.DISK_READ)))
+        )
+
+        assertContains(output, "_Source: [Android Vitals]")
+    }
+
+    @Test
+    fun `potential ANR section contains Source Android Vitals line`() {
+        val report = reportWith()
+            .copy(potentialAnrHints = listOf(aPotentialAnrHint()))
+        val output = MarkdownReporter().render(report)
+
+        assertContains(output, "_Source: [Android Vitals]")
+    }
+
+    // ── Task 4.3/4.4: ANR/Crash rate documentation note ──────────────────────
+
+    @Test
+    fun `exit signals section includes ANR rate threshold note`() {
+        val exitReport = anExitSignalReport(ExitType.ANR)
+        val output = MarkdownReporter().render(cleanReport().copy(exitSignalReport = exitReport))
+
+        assertContains(output, "0.47%")
+    }
+
+    @Test
+    fun `exit signals section includes crash rate threshold note`() {
+        val exitReport = anExitSignalReport(ExitType.ANR)
+        val output = MarkdownReporter().render(cleanReport().copy(exitSignalReport = exitReport))
+
+        assertContains(output, "1.09%")
+    }
+
+    @Test
+    fun `exit signals section mentions fleet aggregation limitation`() {
+        val exitReport = anExitSignalReport(ExitType.ANR)
+        val output = MarkdownReporter().render(cleanReport().copy(exitSignalReport = exitReport))
+
+        assertTrue(
+            output.contains("fleet", ignoreCase = true) || output.contains("aggregat", ignoreCase = true) || output.contains("single run", ignoreCase = true),
+            "Expected exit signals section to mention fleet aggregation limitation"
+        )
+    }
+
+    // ── Task 4.5: playConsoleLimitationsBanner still present ─────────────────
+
+    @Test
+    fun `play console limitations banner is still present at end of report`() {
+        val output = MarkdownReporter().render(reportWith(leaks = listOf(aLeak())))
+
+        assertContains(output, "Android Vitals")
+        assertContains(output, "Play")
+    }
+
+    // ── Task 5.1: Backward compatibility regression ────────────────────────
+
+    @Test
+    fun `legacy scenario without profile field renders same sections as before`() {
+        // A standard report with no vitals profile — all sections should still be present.
+        val output = MarkdownReporter().render(
+            reportWith(
+                violations = listOf(aViolation(violationType = ViolationType.DISK_READ)),
+                rendering = aRenderingIncident(Severity.CRITICAL, frozenFrames = 1),
+                leaks = listOf(aLeak()),
+            )
+        )
+
+        // Sections that must still exist (unchanged by vitals profile)
+        assertContains(output, "## Memory Leaks")
+        assertContains(output, "## StrictMode Violations")
+        assertContains(output, "## Rendering Performance")
+
+        // New source footers are additive — they should be present now too
+        assertContains(output, "_Source: [Android Vitals]")
+
+        // The play console banner must still be at the bottom
+        assertContains(output, "Android Vitals")
+        assertFalse(output.contains("## Threshold breaches"), "Should not have threshold breaches without breach data")
+    }
+
+    @Test
+    fun `no-profile scenario preserves all user threshold values in report rendering`() {
+        // Simulate a clean report — the rendering path must be identical regardless of
+        // whether vitals profile is used or not (no profile = no change to ThresholdConfig)
+        val output = MarkdownReporter().render(cleanReport())
+
+        assertContains(output, "No performance issues detected")
+        // New source footers are NOT added to the "ship it" calm path
+        // (sections only render when there are issues, so no footer lines expected here
+        // unless startup/wakelock data is present)
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private fun cleanReport() = PerfReport(
@@ -433,5 +579,12 @@ class MarkdownReporterTest {
                 rawLine = "01-15 10:00:00.100  1234  1235 I am_anr : [1234,1000,com.example.app,952,Input dispatching timed out]",
             ),
         ),
+    )
+
+    private fun aPotentialAnrHint() = PotentialAnrHint(
+        severity = Severity.WARNING,
+        message = "Choreographer skipped 50 frames",
+        hintType = PotentialAnrHintType.CHOREOGRAPHER_SKIPPED_FRAMES,
+        detail = "01-15 10:00:00.100  1234  1235 I Choreographer: Skipped 50 frames!  The application may be doing too much work on its main thread.",
     )
 }

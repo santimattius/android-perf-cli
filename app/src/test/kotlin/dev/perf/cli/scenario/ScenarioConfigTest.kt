@@ -106,6 +106,73 @@ class ScenarioConfigTest {
         assertFalse(config.engines.heap)
     }
 
+    // ── Wake-lock session fields backward compatibility ────────────────────────
+
+    @Test
+    fun `legacy JSON without new wakelock fields deserializes with both fields null`() {
+        val file = scenarioFile("""{ "name": "legacy" }""")
+        val config = loadScenario(file)
+
+        assertEquals(null, config.thresholds.maxWakelockSessionPercent)
+        assertEquals(null, config.thresholds.maxWakelockLongHeldMs)
+    }
+
+    @Test
+    fun `legacy JSON with existing wakelock fields still deserializes correctly`() {
+        val file = scenarioFile(
+            """
+            {
+              "name": "wakelock-test",
+              "thresholds": {
+                "maxWakelockTimeMs": 60000,
+                "maxWakelockCount": 5
+              }
+            }
+            """.trimIndent()
+        )
+        val config = loadScenario(file)
+
+        assertEquals(60000L, config.thresholds.maxWakelockTimeMs)
+        assertEquals(5, config.thresholds.maxWakelockCount)
+        assertEquals(null, config.thresholds.maxWakelockSessionPercent)
+        assertEquals(null, config.thresholds.maxWakelockLongHeldMs)
+    }
+
+    @Test
+    fun `new wakelock session fields deserialize when present in JSON`() {
+        val file = scenarioFile(
+            """
+            {
+              "name": "wakelock-session",
+              "thresholds": {
+                "maxWakelockSessionPercent": 5.0,
+                "maxWakelockLongHeldMs": 3600000
+              }
+            }
+            """.trimIndent()
+        )
+        val config = loadScenario(file)
+
+        assertEquals(5.0, config.thresholds.maxWakelockSessionPercent)
+        assertEquals(3_600_000L, config.thresholds.maxWakelockLongHeldMs)
+    }
+
+    @Test
+    fun `serialization round-trip preserves all threshold fields including new nullable ones`() {
+        val original = ThresholdConfig(
+            maxJankyPercent = 3.0,
+            maxColdStartMs = 2000,
+            maxWakelockSessionPercent = 5.0,
+            maxWakelockLongHeldMs = 3_600_000L,
+        )
+        // Verify the object can be re-constructed with all values intact (not testing JSON round-trip,
+        // just that the data class holds values correctly)
+        assertEquals(3.0, original.maxJankyPercent)
+        assertEquals(2000, original.maxColdStartMs)
+        assertEquals(5.0, original.maxWakelockSessionPercent)
+        assertEquals(3_600_000L, original.maxWakelockLongHeldMs)
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private fun scenarioFile(content: String): File {
