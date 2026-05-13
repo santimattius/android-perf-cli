@@ -14,9 +14,13 @@ import dev.perf.analysis.model.ColdStartMeasurement
 import dev.perf.analysis.model.startup.StartupReport
 import dev.perf.analysis.model.ThresholdBreach
 import dev.perf.analysis.model.WakelockReport
+import dev.perf.analysis.score.PerfScore
+import dev.perf.analysis.score.PerfScoreTier
+import dev.perf.analysis.score.SignalScore
 import dev.perf.report.source.SourceLinker
 import dev.perf.report.vitals.VitalsPlaybook
 import dev.perf.report.source.StackFrameParser
+import kotlin.math.roundToInt
 
 /**
  * Renders a styled summary to stdout using Mordant.
@@ -44,6 +48,7 @@ class ConsoleReporter(
             report.wakelockReport?.let { printWakelocks(it) }
             printPerfetto(report)
             printAndroidCliHint(extras)
+            report.perfScore?.let { printPerfScore(it) }
             return
         }
 
@@ -75,6 +80,7 @@ class ConsoleReporter(
         }
         printPerfetto(report)
         printAndroidCliHint(extras)
+        report.perfScore?.let { printPerfScore(it) }
     }
 
     private fun printStartup(sr: StartupReport) {
@@ -258,6 +264,45 @@ class ConsoleReporter(
                 }
             )
         )
+    }
+
+    // ── Perf Score ────────────────────────────────────────────────────────────
+
+    private fun printPerfScore(s: PerfScore) {
+        val tc = s.tier.color()
+        terminal.println()
+        terminal.println(tc(bold("  Perf Score: ${s.score}/100  (${s.tier.display()})")))
+        val filled = (s.score / 10.0).roundToInt().coerceIn(0, 10)
+        terminal.println(tc("  ${"█".repeat(filled)}${"░".repeat(10 - filled)}  ${s.score} / 100"))
+        terminal.println(
+            terminal.render(
+                table {
+                    header { row("Signal", "Sub-score", "Weight", "Active") }
+                    body {
+                        s.breakdown.forEach { r ->
+                            val sub = if (r.active) r.subScore.toString() else "—"
+                            row(r.signal, sub, "${r.weight}%", if (r.active) "yes" else "no")
+                        }
+                    }
+                }
+            )
+        )
+        terminal.println(dim("  Active signals: ${s.activeSignalCount} of 6."))
+        if (s.activeSignalCount < 3) {
+            terminal.println(yellow("  ⚠ Score based on fewer than 3 signals — enable more engines."))
+        }
+    }
+
+    private fun PerfScoreTier.color() = when (this) {
+        PerfScoreTier.GOOD -> green
+        PerfScoreTier.NEEDS_IMPROVEMENT -> yellow
+        PerfScoreTier.BAD -> red
+    }
+
+    private fun PerfScoreTier.display(): String = when (this) {
+        PerfScoreTier.GOOD -> "GOOD"
+        PerfScoreTier.NEEDS_IMPROVEMENT -> "NEEDS IMPROVEMENT"
+        PerfScoreTier.BAD -> "BAD"
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
