@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Perf CLI Sample</string>
+    <string name="reproduce_bad_behavior">Reproduce bad behavior</string>
+    <string name="run_fixed_behavior">Run fixed behavior</string>
+
+    <string name="scenario_jank">Jank / Frozen Frames</string>
+    <string name="scenario_strict_mode_disk_write">StrictMode — Disk Write</string>
+    <string name="scenario_strict_mode_disk_read">StrictMode — Disk Read</string>
+    <string name="scenario_strict_mode_network">StrictMode — Network on Main Thread</string>
+    <string name="scenario_anr">ANR Hint</string>
+    <string name="scenario_cold_start">Cold Start</string>
+    <string name="scenario_wake_lock">Wake Lock</string>
+    <string name="scenario_crash">Crash</string>
+    <string name="scenario_background_network">Background Network</string>
+    <string name="scenario_permission_denial">Permission Denial</string>
+    <string name="scenario_memory_leak">Memory Leak</string>
+</resources>

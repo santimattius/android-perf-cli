@@ -1,0 +1,96 @@
+{
+  "name": "sample-integration",
+  "package": "com.android.perfcli.sample",
+  "durationSeconds": 90,
+  "engines": {
+    "strictMode": true,
+    "rendering": true,
+    "anrHints": true,
+    "exitSignals": true,
+    "wakelocks": true,
+    "stuckWakelocks": true,
+    "backgroundNetwork": true,
+    "permissionDenials": true,
+    "startup": true,
+    "startupTypes": ["cold"],
+    "startupSamples": 3
+  },
+  "thresholds": {
+    "maxJankyPercent": 5.0,
+    "maxFrozenFrames": 0,
+    "maxStrictModeViolations": 0,
+    "maxPotentialAnrHints": 20,
+    "maxColdStartMs": 3000,
+    "maxWakelockTimeMs": 60000,
+    "maxPermissionDenials": null
+  },
+  "scenarios": [
+    {
+      "id": "jank",
+      "activity": "com.android.perfcli.sample.scenarios.JankActivity",
+      "description": "Jank and dropped frames caused by Thread.sleep inside onDraw"
+    },
+    {
+      "id": "strict_mode_disk_write",
+      "activity": "com.android.perfcli.sample.scenarios.DiskWriteActivity",
+      "description": "StrictMode DISK_WRITE violation from SharedPreferences.commit() on main thread"
+    },
+    {
+      "id": "strict_mode_disk_read",
+      "activity": "com.android.perfcli.sample.scenarios.DiskReadActivity",
+      "description": "StrictMode DISK_READ violation from SharedPreferences.getString() on main thread"
+    },
+    {
+      "id": "strict_mode_network",
+      "activity": "com.android.perfcli.sample.scenarios.NetworkActivity",
+      "description": "StrictMode NETWORK violation from URL.openStream() on main thread"
+    },
+    {
+      "id": "anr",
+      "activity": "com.android.perfcli.sample.scenarios.AnrActivity",
+      "description": "ANR hint from Thread.sleep(6000) blocking the main thread"
+    },
+    {
+      "id": "wake_lock",
+      "activity": "com.android.perfcli.sample.scenarios.WakeLockActivity",
+      "description": "Unreleased PowerManager.WakeLock held indefinitely"
+    },
+    {
+      "id": "crash",
+      "activity": "com.android.perfcli.sample.scenarios.CrashActivity",
+      "description": "Uncaught RuntimeException crashing the process"
+    },
+    {
+      "id": "background_network",
+      "activity": "com.android.perfcli.sample.scenarios.BackgroundNetworkActivity",
+      "description": "Background network polling via legacy IntentService"
+    },
+    {
+      "id": "permission_denial",
+      "activity": "com.android.perfcli.sample.scenarios.PermissionDenialActivity",
+      "description": "Location access without ACCESS_FINE_LOCATION permission producing SecurityException"
+    },
+    {
+      "id": "memory_leak",
+      "activity": "com.android.perfcli.sample.scenarios.MemoryLeakActivity",
+      "description": "Static Activity reference preventing garbage collection after rotation"
+    },
+    {
+      "id": "frozen_frame",
+      "activity": "com.android.perfcli.sample.scenarios.FrozenActivity",
+      "description": "Frozen frame (>700ms) caused by Thread.sleep(1200) blocking the main thread"
+    },
+    {
+      "id": "background_wifi",
+      "activity": "com.android.perfcli.sample.scenarios.BackgroundWifiActivity",
+      "description": "Repeated Wi-Fi scans via WifiManager.startScan() loop draining battery"
+    }
+  ],
+  "workflow": [
+    { "type": "intent", "uri": "intent://com.android.perfcli.sample/.scenarios.JankActivity#Intent;scheme=app;end", "label": "open-jank" },
+    { "type": "wait", "seconds": 2 },
+    { "type": "tap", "x": 540, "y": 900, "label": "tap-bad" },
+    { "type": "wait", "seconds": 4 },
+    { "type": "keyevent", "key": "BACK" }
+  ]
+}

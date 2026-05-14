@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <application
+        android:name=".SampleApplication"
+        android:allowBackup="true"
+        android:label="@string/app_name"
+        android:theme="@style/Theme.SampleBootstrap">
+
+        <activity
+            android:name=".LauncherActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".scenarios.JankActivity"
+            android:exported="true" />
+
+        <activity
+            android:name=".scenarios.FrozenActivity"
+            android:exported="true" />
+
+        <activity
+            android:name=".scenarios.BackgroundWifiActivity"
+            android:exported="true" />
+
+        <activity
+            android:name=".scenarios.DiskWriteActivity"
+            android:exported="true" />
+
+        <activity
+            android:name=".scenarios.DiskReadActivity"
+            android:exported="true" />
+
+        <activity
+            android:name=".scenarios.NetworkActivity"
+            android:exported="true" />
+
+        <activity
+            android:name=".scenarios.AnrActivity"
+            android:exported="true" />
+
+        <activity
+            android:name=".scenarios.ColdStartActivity"
+            android:exported="true" />
+
+        <activity
+            android:name=".scenarios.WakeLockActivity"
+            android:exported="true" />
+
+        <activity
+            android:name=".scenarios.CrashActivity"
+            android:exported="true" />
+
+        <activity
+            android:name=".scenarios.BackgroundNetworkActivity"
+            android:exported="true" />
+
+        <activity
+            android:name=".scenarios.PermissionDenialActivity"
+            android:exported="true" />
+
+        <activity
+            android:name=".scenarios.MemoryLeakActivity"
+            android:exported="true" />
+
+        <service
+            android:name=".scenarios.internal.PollingIntentService"
+            android:exported="false" />
+
+    </application>
+
+</manifest>
