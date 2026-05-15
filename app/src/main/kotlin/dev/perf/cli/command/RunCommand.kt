@@ -63,6 +63,7 @@ import java.lang.ProcessBuilder
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
+import java.util.Locale
 import kotlin.io.path.relativeTo
 
 /**
@@ -97,10 +98,11 @@ class RunCommand : CliktCommand(
         help = "Trigger a heap dump at end of session (ignored when --scenario is provided)",
     ).flag(default = false)
 
-    private val output: File by option(
+    private val output: File? by option(
         "--output", "-o",
-        help = "Output path for the Markdown report",
-    ).file().default(File("report.md"))
+        help = "Output path for the Markdown report. " +
+            "Defaults to report-<yyyyMMdd-HHmmssZ>.md in the current directory.",
+    ).file()
 
     private val serial: String? by option(
         "--serial", "-s",
@@ -218,8 +220,11 @@ class RunCommand : CliktCommand(
             val device = ensureAdbDevice(config)
             val linker = projectDir?.let { SourceLinker(it) } ?: SourceLinker()
 
+            val generatedAt = Instant.now()
+            val resolvedOutput = resolvedOutputFile(generatedAt, output)
+
             val artifactRootHost: File =
-                artifactsDir ?: File(output.absoluteFile.parentFile ?: File("."), "perf-artifacts").also { it.mkdirs() }
+                artifactsDir ?: File(resolvedOutput.absoluteFile.parentFile ?: File("."), "perf-artifacts").also { it.mkdirs() }
             artifactRootHost.mkdirs()
 
             coroutineScope {
@@ -306,7 +311,7 @@ class RunCommand : CliktCommand(
                 if (resolved.screenshotsEnabled) {
                     val f = screenshotFileNext(artifactRootHost, "start", screenshotArtifacts.size)
                     ScreenshotCapture.capture(device, f)
-                    screenshotArtifacts.add(relativePathForReport(output, f))
+                    screenshotArtifacts.add(relativePathForReport(resolvedOutput, f))
                 }
 
                 device.shell(
@@ -331,7 +336,7 @@ class RunCommand : CliktCommand(
                         emittedScreenshots = wfShotFiles,
                     )
                     wfShotFiles.forEach {
-                        screenshotArtifacts.add(relativePathForReport(output, it))
+                        screenshotArtifacts.add(relativePathForReport(resolvedOutput, it))
                     }
                 }
 
@@ -373,7 +378,7 @@ class RunCommand : CliktCommand(
                         screenshotFileNext(artifactRootHost, "end", screenshotArtifacts.size)
                     kotlinx.coroutines.delay(400)
                     ScreenshotCapture.capture(device, f)
-                    screenshotArtifacts.add(relativePathForReport(output, f))
+                    screenshotArtifacts.add(relativePathForReport(resolvedOutput, f))
                 }
 
                 report = report.copy(screenshotArtifacts = screenshotArtifacts)
@@ -397,7 +402,6 @@ class RunCommand : CliktCommand(
                         resolved.thresholds,
                     )
 
-                val generatedAt = Instant.now()
                 val timestampIso = isoInstant(generatedAt)
 
                 // T-6.4: Load prior session window and compute rolling rates (best-effort)
@@ -431,8 +435,8 @@ class RunCommand : CliktCommand(
                     )
 
                 ConsoleReporter(terminal, linker).print(report, extras)
-                MarkdownReporter(linker).write(report, output, extras)
-                echo("→ Report saved to ${output.absolutePath}")
+                MarkdownReporter(linker).write(report, resolvedOutput, extras)
+                echo("→ Report saved to ${resolvedOutput.absolutePath}")
 
                 // T-6.5: Append this run to history (best-effort — failure must NOT cause exit code 1)
                 runCatching {
@@ -714,4 +718,27 @@ internal fun buildHistoryEntry(
         scenarioLabel = scenarioLabel,
         coldStartP50Ms = report.startup?.cold?.p50Ms,
     )
+}
+
+private val REPORT_FILENAME_FORMATTER: DateTimeFormatter =
+    DateTimeFormatter
+        .ofPattern("yyyyMMdd-HHmmssX")
+        .withLocale(Locale.ROOT)
+        .withZone(ZoneOffset.UTC)
+
+/**
+ * Returns the effective Markdown report output [File].
+ *
+ * - When [explicit] is non-null (user passed `--output`), it is returned verbatim.
+ * - When [explicit] is null, a timestamped filename derived from [instant] is returned
+ *   (e.g. `report-20260515-123456Z.md`). The format is UTC, culture-invariant, and
+ *   filesystem-safe on macOS/Linux/Windows (no colons, slashes, or spaces).
+ *
+ * Extracted as a top-level `internal` function so it can be unit-tested without a
+ * full Clikt command context — consistent with [evaluateMinScore] and [buildHistoryEntry].
+ */
+internal fun resolvedOutputFile(instant: Instant, explicit: File?): File {
+    if (explicit != null) return explicit
+    val stamp = REPORT_FILENAME_FORMATTER.format(instant)
+    return File("report-$stamp.md")
 }
