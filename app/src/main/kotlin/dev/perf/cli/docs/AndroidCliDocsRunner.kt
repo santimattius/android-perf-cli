@@ -12,7 +12,7 @@ import java.util.concurrent.TimeUnit
  */
 class AndroidCliDocsRunner(
     private val resolveTimeoutMs: Long = 3_000L,
-    private val searchTimeoutMs: Long = 18_000L,
+    internal val searchTimeoutMs: Long = 90_000L,
 ) {
 
     fun searchForReport(report: PerfReport): String? {
@@ -64,7 +64,7 @@ class AndroidCliDocsRunner(
         val p = pb.start()
         if (!p.waitFor(searchTimeoutMs, TimeUnit.MILLISECONDS)) {
             p.destroyForcibly()
-            return@runCatching "(timeout after ${searchTimeoutMs}ms)"
+            return@runCatching null
         }
         val text = p.inputStream.bufferedReader().readText().trim()
         if (text.isEmpty()) return@runCatching null

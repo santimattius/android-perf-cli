@@ -365,6 +365,15 @@ class RunCommand : CliktCommand(
 
                 var report = reportBeforeSidecars.copy(procSnapshot = procSnapshot)
 
+                // Launch docs search as early as the final report is available.
+                // Awaited just before ReportRenderExtras so screenshot, perfetto, threshold eval,
+                // and history steps all run concurrently with the docs subprocess.
+                val docsDeferred = if (config.androidDocs && !skipAndroidDocs) {
+                    async(Dispatchers.IO) { AndroidCliDocsRunner().searchForReport(report) }
+                } else {
+                    null
+                }
+
                 if (startupReport != null) {
                     report =
                         report.copy(
@@ -415,11 +424,7 @@ class RunCommand : CliktCommand(
 
                 val extras =
                     ReportRenderExtras(
-                        androidCliDocsSnippet = if (!skipAndroidDocs) {
-                            AndroidCliDocsRunner().searchForReport(report)
-                        } else {
-                            null
-                        },
+                        androidCliDocsSnippet = docsDeferred?.await(),
                         sessionMeta =
                             ReportSessionMeta(
                                 generatedAtIso = timestampIso,

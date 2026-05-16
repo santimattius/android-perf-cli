@@ -17,6 +17,7 @@ private val configFile = File(System.getProperty("user.home"), ".config/perf-cli
 data class PerfConfig(
     val androidSdkPath: String,
     val defaultAvd: String? = null,
+    val androidDocs: Boolean = true,
 )
 
 fun loadConfig(): PerfConfig =
