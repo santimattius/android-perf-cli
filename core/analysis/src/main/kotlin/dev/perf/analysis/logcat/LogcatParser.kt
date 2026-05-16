@@ -42,6 +42,25 @@ class LogcatParser(
         var currentViolation: PartialViolation? = null
         val stackBuffer = StringBuilder()
 
+        // ANR buffering state (mirrors the StrictMode pattern above)
+        var pendingAnrHint: PotentialAnrHint? = null
+        val anrStackBuffer = StringBuilder()
+        var anrFrameCount = 0
+        val ANR_FRAME_CAP = 64
+
+        fun flushPendingAnr() {
+            pendingAnrHint?.let {
+                trySend(
+                    SessionLogcatEvent.AnrHint(
+                        it.copy(stackTrace = anrStackBuffer.toString().trimEnd()),
+                    ),
+                )
+            }
+            pendingAnrHint = null
+            anrStackBuffer.clear()
+            anrFrameCount = 0
+        }
+
         device.stream("logcat", "-v", "threadtime", "--pid", pidOf(packageName)) { line ->
             val trimmed = line.trimEnd()
 
@@ -68,7 +87,39 @@ class LogcatParser(
             }
 
             if (collectAnrHints) {
-                parsePotentialAnrLine(line.trim())?.let { trySend(SessionLogcatEvent.AnrHint(it)) }
+                // CRITICAL ordering: check continuation BEFORE parsePotentialAnrLine to prevent
+                // \tat lines being misidentified as new hints.
+                if (pendingAnrHint != null && (line.startsWith("\tat ") || line.startsWith("\t..."))) {
+                    // Always count every continuation line seen
+                    anrFrameCount++
+                    if (anrFrameCount <= ANR_FRAME_CAP) {
+                        // Within cap — buffer the frame
+                        anrStackBuffer.appendLine(trimmed)
+                    }
+                    // Lines beyond cap are counted but not buffered; sentinel is written at flush time
+                } else {
+                    // Not a continuation line — flush any pending ANR hint first
+                    if (pendingAnrHint != null) {
+                        // If over cap, append sentinel with actual omitted count
+                        if (anrFrameCount > ANR_FRAME_CAP) {
+                            val omitted = anrFrameCount - ANR_FRAME_CAP
+                            anrStackBuffer.appendLine("\t... ($omitted more frames omitted)")
+                        }
+                        flushPendingAnr()
+                    }
+
+                    parsePotentialAnrLine(line.trim())?.let { hint ->
+                        if (hint.hintType == PotentialAnrHintType.INPUT_DISPATCH_TIMEOUT_RISK) {
+                            // Hold and buffer continuation frames
+                            pendingAnrHint = hint
+                            anrStackBuffer.clear()
+                            anrFrameCount = 0
+                        } else {
+                            // Emit immediately — no buffering for other hint types
+                            trySend(SessionLogcatEvent.AnrHint(hint))
+                        }
+                    }
+                }
             }
 
             !isClosedForSend
@@ -76,6 +127,15 @@ class LogcatParser(
 
         if (collectStrictMode) {
             currentViolation?.let { trySend(SessionLogcatEvent.StrictMode(it.toViolation(stackBuffer.toString()))) }
+        }
+
+        if (collectAnrHints) {
+            // End-of-stream flush: append sentinel if over cap, then flush
+            if (pendingAnrHint != null && anrFrameCount > ANR_FRAME_CAP) {
+                val omitted = anrFrameCount - ANR_FRAME_CAP
+                anrStackBuffer.appendLine("\t... ($omitted more frames omitted)")
+            }
+            flushPendingAnr()
         }
 
         close()

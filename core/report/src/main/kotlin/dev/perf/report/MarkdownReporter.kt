@@ -477,6 +477,14 @@ class MarkdownReporter(private val sourceLinker: SourceLinker? = null) {
             appendLine()
             appendLine("  </details>")
             appendLine()
+            if (h.stackTrace.isNotBlank()) {
+                appendLine("  <details><summary>Stack trace</summary>")
+                appendLine()
+                appendStackTrace(h.stackTrace)
+                appendLine()
+                appendLine("  </details>")
+                appendLine()
+            }
         }
         if (hints.size > 30) {
             appendLine("_${hints.size - 30} more signals omitted._")

@@ -866,11 +866,15 @@ class MarkdownReporterTest {
         ),
     )
 
-    private fun aPotentialAnrHint() = PotentialAnrHint(
+    private fun aPotentialAnrHint(
+        hintType: PotentialAnrHintType = PotentialAnrHintType.CHOREOGRAPHER_SKIPPED_FRAMES,
+        stackTrace: String = "",
+    ) = PotentialAnrHint(
         severity = Severity.WARNING,
         message = "Choreographer skipped 50 frames",
-        hintType = PotentialAnrHintType.CHOREOGRAPHER_SKIPPED_FRAMES,
+        hintType = hintType,
         detail = "01-15 10:00:00.100  1234  1235 I Choreographer: Skipped 50 frames!  The application may be doing too much work on its main thread.",
+        stackTrace = stackTrace,
     )
 
     // ── T-5.1 RED: Session Rates section ─────────────────────────────────────
@@ -945,6 +949,36 @@ class MarkdownReporterTest {
         )
 
         assertContains(output, "NEAR")
+    }
+
+    // ── Phase 4: MarkdownReporter ANR Stack Trace rendering ───────────────────
+
+    @Test
+    fun `ANR hint with non-empty stackTrace — output contains details summary Stack trace block`() {
+        val hint = aPotentialAnrHint(
+            hintType = PotentialAnrHintType.INPUT_DISPATCH_TIMEOUT_RISK,
+            stackTrace = "\tat com.example.Main.handleInput(Main.kt:42)\n\tat com.example.Main.run(Main.kt:10)",
+        )
+        val report = reportWith().copy(potentialAnrHints = listOf(hint))
+        val output = MarkdownReporter().render(report)
+
+        assertContains(output, "<summary>Stack trace</summary>")
+    }
+
+    @Test
+    fun `ANR hint with empty stackTrace — output contains Raw log line block and no Stack trace block`() {
+        val hint = aPotentialAnrHint(
+            hintType = PotentialAnrHintType.INPUT_DISPATCH_TIMEOUT_RISK,
+            stackTrace = "",
+        )
+        val report = reportWith().copy(potentialAnrHints = listOf(hint))
+        val output = MarkdownReporter().render(report)
+
+        assertContains(output, "<summary>Raw log line</summary>")
+        assertFalse(
+            output.contains("<summary>Stack trace</summary>"),
+            "Expected no Stack trace block when stackTrace is empty",
+        )
     }
 
     // ── Session Rates helpers ──────────────────────────────────────────────────

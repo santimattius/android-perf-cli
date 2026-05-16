@@ -13,6 +13,7 @@ data class PotentialAnrHint(
     override val message: String,
     val hintType: PotentialAnrHintType,
     val detail: String,
+    val stackTrace: String = "",
 ) : PerfIncident
 
 @Serializable
