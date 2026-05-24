@@ -121,7 +121,12 @@ matrix):
 
 ## CI and scenarios
 
-Define engines (including **`startup`**, **`startupTypes`**, **`startupSamples`**), optional **`profile`** / Perfetto keys, **`workflow`**, **`build`**, and **thresholds** (including **`maxColdStartMs`**, **`maxWarmStartMs`**, **`maxHotStartMs`**) in JSON. Optional wake-lock keys: **`engines.wakelocks`**, **`thresholds.maxWakelockTimeMs`**, **`thresholds.maxWakelockCount`** — see [example-scenario.json](scenarios/example-scenario.json) and [example-full.json](scenarios/example-full.json).
+Define engines (including **`startup`**, **`startupTypes`**, **`startupSamples`**), optional *
+*`profile`** / Perfetto keys, **`workflow`**, **`build`**, and **thresholds** (including *
+*`maxColdStartMs`**, **`maxWarmStartMs`**, **`maxHotStartMs`**) in JSON. Optional wake-lock keys: *
+*`engines.wakelocks`**, **`thresholds.maxWakelockTimeMs`**, **`thresholds.maxWakelockCount`** —
+see [example-scenario.json](scenarios/example-scenario.json)
+and [example-full.json](scenarios/example-full.json).
 
 ```bash
 perf run --package com.example.app.debug --scenario scenarios/example-scenario.json
