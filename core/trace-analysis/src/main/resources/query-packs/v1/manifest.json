@@ -1,0 +1,25 @@
+{
+  "version": "v1",
+  "domains": {
+    "startup": {
+      "mode": "run_metrics",
+      "runMetrics": "android_startup",
+      "metricKeys": ["android_startup"]
+    },
+    "rendering": {
+      "mode": "sql",
+      "queryResource": "rendering.sql",
+      "metricKeys": ["main_thread_blocked_ms", "gfx_slice_count", "gfx_total_duration_ms"]
+    },
+    "memory": {
+      "mode": "sql",
+      "queryResource": "memory.sql",
+      "metricKeys": ["process_count", "max_rss_kb"]
+    },
+    "cpu": {
+      "mode": "sql",
+      "queryResource": "cpu.sql",
+      "metricKeys": ["top_slice_name", "top_slice_duration_ms"]
+    }
+  }
+}

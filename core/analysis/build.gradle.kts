@@ -5,6 +5,7 @@ plugins {
 
 dependencies {
     implementation(project(":core:adb"))
+    implementation(project(":core:trace-analysis"))
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.shark.hprof)

@@ -89,6 +89,8 @@ data class EngineConfig(
     val heap: Boolean = false,
     val anrHints: Boolean = true,
     val perfetto: Boolean = false,
+    /** When true with [perfetto], run offline trace analyze after capture (best-effort; does not fail the run). */
+    val perfettoAutoAnalyze: Boolean = false,
     /**
      * When true, measures cold start (`am force-stop` + `am start -W`) once at
      * the beginning of the run (before the timed monitoring session).
@@ -190,6 +192,8 @@ data class ThresholdConfig(
      * do NOT affect the exit code.
      */
     val maxPermissionDenials: Int? = null,
+    /** Trace analyze: main thread runnable/blocked time (ms) from rendering domain. */
+    val maxMainThreadBlockedMs: Long? = null,
 )
 
 /**

@@ -88,6 +88,7 @@ fun resolveRunParameters(
             scenario.engines.copy(
                 heap = true,
                 perfetto = true,
+                perfettoAutoAnalyze = true,
                 startup = true,
                 wakelocks = true,
             )

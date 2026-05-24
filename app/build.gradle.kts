@@ -12,6 +12,7 @@ application {
 dependencies {
     implementation(project(":core:adb"))
     implementation(project(":core:analysis"))
+    implementation(project(":core:trace-analysis"))
     implementation(project(":core:report"))
     implementation(libs.clikt)
     implementation(libs.mordant)

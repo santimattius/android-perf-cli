@@ -20,6 +20,7 @@ include(
     ":app",
     ":core:adb",
     ":core:analysis",
+    ":core:trace-analysis",
     ":core:report",
     ":sample",
 )

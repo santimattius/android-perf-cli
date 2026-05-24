@@ -423,7 +423,21 @@ class MarkdownReporter(private val sourceLinker: SourceLinker? = null) {
                     "Review **sched / gfx / binder** timelines against [slow rendering](https://developer.android.com/topic/performance/vitals/render) and [startup](https://developer.android.com/topic/performance/vitals/launch-time) Vitals docs.",
             )
             appendLine()
+            report.perfettoAnalyze?.let { summary ->
+                appendLine("### Trace analyze (query pack ${summary.queryPackVersion})")
+                appendLine()
+                summary.skipReason?.let { reason ->
+                    appendLine("> Analyze skipped: $reason")
+                    appendLine()
+                }
+                summary.domains.forEach { (domain, result) ->
+                    appendLine("**$domain**:")
+                    result.metrics.forEach { (k, v) -> appendLine("- $k: $v") }
+                    appendLine()
+                }
+            }
             VitalsPlaybook.perfettoAnalysisHints().forEach { appendLine(it) }
+            VitalsPlaybook.perfettoInvestigationHandoff().forEach { appendLine(it) }
         }
         report.perfettoMessage?.let { msg ->
             appendLine("## Perfetto")

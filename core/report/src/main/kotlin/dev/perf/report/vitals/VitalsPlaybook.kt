@@ -114,6 +114,15 @@ object VitalsPlaybook {
         "",
     )
 
+    fun perfettoInvestigationHandoff(): List<String> = listOf(
+        "### Deep investigation (optional)",
+        "- **CLI:** `perf analyze <startup|rendering|memory|cpu> <trace>` (host `trace_processor` required).",
+        "- **Perfetto UI:** [ui.perfetto.dev](https://ui.perfetto.dev) for interactive timelines.",
+        "- **Cursor skills:** `perfetto-trace-analysis` (open-ended root cause), `perfetto-sql` (targeted SQL).",
+        "- See [perfetto-investigation.md](https://github.com/android/perf-cli/blob/main/docs/perfetto-investigation.md) in this repo.",
+        "",
+    )
+
     fun procSnapshotGuidance(): List<String> = listOf(
         "_Coarse baseline only — aggregate crash/ANR rates live in Play Console ([Android Vitals]($VITALS_HUB))._",
         "",

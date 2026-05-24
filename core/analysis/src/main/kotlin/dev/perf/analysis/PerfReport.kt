@@ -16,6 +16,7 @@ import dev.perf.analysis.model.StuckWakelockReport
 import dev.perf.analysis.model.WakelockReport
 import dev.perf.analysis.model.WifiScanReport
 import dev.perf.analysis.score.PerfScore
+import dev.perf.trace.model.TraceAnalysisSummary
 import java.io.File
 
 data class PerfReport(
@@ -44,6 +45,8 @@ data class PerfReport(
     val perfettoMessage: String? = null,
     /** When the `vitals` preset failed and was retried with baseline categories. */
     val perfettoDegradedFromVitalsPreset: Boolean = false,
+    /** Offline trace_processor metrics when analyze ran; null when skipped or not requested. */
+    val perfettoAnalyze: TraceAnalysisSummary? = null,
     val procSnapshot: ProcSnapshotSummary? = null,
     /** Paths relative to report file (or labels) for screenshots taken during the run. */
     val screenshotArtifacts: List<String> = emptyList(),
