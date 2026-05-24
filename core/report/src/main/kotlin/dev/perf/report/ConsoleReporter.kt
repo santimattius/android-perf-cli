@@ -172,6 +172,34 @@ class ConsoleReporter(
                 }
             )
         )
+        // Stack trace blocks for hints that carry frames
+        hints.filter { it.stackTrace.isNotBlank() }.forEach { printAnrStackTrace(it) }
+    }
+
+    /**
+     * Prints the trigger [detail] line and parsed stack frames for an ANR hint.
+     *
+     * Design decision: new method — do NOT reuse [printTopFrame] which is typed
+     * for [StrictModeViolation] and only prints the top resolvable frame.
+     * ANR hints benefit from showing all captured frames (up to the cap) so
+     * the developer can trace the full blocking call chain. When [sourceLinker]
+     * is null or no frame resolves, output falls back to plain dim text.
+     */
+    private fun printAnrStackTrace(hint: PotentialAnrHint) {
+        terminal.println()
+        terminal.println(dim("  ${hint.detail}"))
+        hint.stackTrace.lines().filter { it.isNotBlank() }.forEach { rawLine ->
+            val frame = StackFrameParser.parse(rawLine)
+            val url = frame?.let { sourceLinker?.linkFor(it) }
+            if (url != null) {
+                val linked = terminal.colors.blue(
+                    "${frame.className}.${frame.method}(${frame.file}:${frame.line})",
+                )
+                terminal.println("    $linked  ${dim(url)}")
+            } else {
+                terminal.println("    ${dim(rawLine.trim())}")
+            }
+        }
     }
 
     // ── Sections ──────────────────────────────────────────────────────────────
