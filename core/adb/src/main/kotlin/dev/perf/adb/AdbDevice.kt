@@ -1,6 +1,8 @@
 package dev.perf.adb
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.job
+import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
 import java.io.File
 
@@ -115,9 +117,11 @@ class AdbDevice(
     }
 
     /**
-     * Streams output line-by-line via [onLine]. Useful for long-running
-     * commands like logcat. Blocks until the process exits or [onLine] returns
-     * false (which kills the process).
+     * Streams output line-by-line via [onLine]. Useful for long-running commands like logcat.
+     *
+     * When [onLine] returns `false` or the hosting coroutine is cancelled, the subprocess is
+     * destroyed and this function returns within a bounded wall time (typically well under 2s),
+     * even if the read would otherwise block waiting for the next line.
      */
     override suspend fun stream(vararg args: String, onLine: (String) -> Boolean) {
         val command = buildList {
@@ -132,10 +136,18 @@ class AdbDevice(
                 .redirectErrorStream(true)
                 .start()
 
+            coroutineContext.job.invokeOnCompletion {
+                process.destroyForcibly()
+                runCatching { process.inputStream.close() }
+            }
+
             try {
-                process.inputStream.bufferedReader().use { reader ->
-                    for (line in reader.lines()) {
-                        if (!onLine(line)) break
+                runInterruptible {
+                    process.inputStream.bufferedReader().use { reader ->
+                        while (!Thread.currentThread().isInterrupted) {
+                            val line = reader.readLine() ?: break
+                            if (!onLine(line)) break
+                        }
                     }
                 }
             } finally {
