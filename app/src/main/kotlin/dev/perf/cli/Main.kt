@@ -1,10 +1,12 @@
 package dev.perf.cli
 
 import com.github.ajalt.clikt.core.subcommands
+import com.github.ajalt.clikt.parameters.options.versionOption
 import dev.perf.cli.command.HistoryCommand
 import dev.perf.cli.command.InitCommand
 import dev.perf.cli.command.RunCommand
 import dev.perf.cli.command.SdkCommand
+import dev.perf.cli.command.VersionCommand
 
 /**
  * Entry point. PerfCli is the root command — it holds no logic itself.
@@ -18,10 +20,11 @@ class PerfCli : com.github.ajalt.clikt.core.CliktCommand(
     help = "Android performance monitoring CLI — leaks, StrictMode, frames.",
     invokeWithoutSubcommand = false,
 ) {
+    init { versionOption(BuildConfig.VERSION, names = setOf("--version", "-V")) }
     override fun run() = Unit
 }
 
 fun main(args: Array<String>) =
     PerfCli()
-        .subcommands(InitCommand(), SdkCommand(), RunCommand(), HistoryCommand())
+        .subcommands(InitCommand(), SdkCommand(), RunCommand(), HistoryCommand(), VersionCommand())
         .main(args)
