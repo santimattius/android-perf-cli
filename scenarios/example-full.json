@@ -11,6 +11,7 @@
     "maxPotentialAnrHints": 50,
     "maxColdStartMs": 4000,
     "maxWakelockTimeMs": 600000,
-    "maxWakelockCount": 50
+    "maxWakelockCount": 50,
+    "maxMainThreadBlockedMs": 2000
   }
 }

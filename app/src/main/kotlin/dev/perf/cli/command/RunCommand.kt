@@ -20,6 +20,11 @@ import dev.perf.cli.history.SessionHistoryEntry
 import dev.perf.analysis.PerfWatchdog
 import dev.perf.analysis.screenshot.ScreenshotCapture
 import dev.perf.analysis.perfetto.PerfettoCapture
+import dev.perf.trace.TraceAnalyzeService
+import dev.perf.trace.model.AnalyzeOptions
+import dev.perf.trace.model.AnalyzeResult
+import dev.perf.trace.model.TraceAnalysisSummary
+import dev.perf.trace.model.TraceAnalyzeException
 import dev.perf.analysis.perfetto.PerfettoRecordResult
 import dev.perf.analysis.perfetto.resolveTracingPreset
 import dev.perf.analysis.proc.ProcSnapshotCapture
@@ -117,6 +122,11 @@ class RunCommand : CliktCommand(
     private val perfettoFlag: Boolean by option(
         "--perfetto",
         help = "Record a Perfetto system trace for the whole session (device must have `perfetto`). Open in https://ui.perfetto.dev",
+    ).flag(default = false)
+
+    private val autoAnalyzeFlag: Boolean by option(
+        "--auto-analyze",
+        help = "After a successful Perfetto capture, run offline trace analyze (rendering + cpu; requires host trace_processor).",
     ).flag(default = false)
 
     private val skipEmulator: Boolean by option(
@@ -395,11 +405,19 @@ class RunCommand : CliktCommand(
                 val perfettoOutcome = perfettoDeferred?.await()
                 report =
                     when (perfettoOutcome) {
-                        is PerfettoOutcome.Ok -> report.copy(
-                            perfettoTraceFile = perfettoOutcome.file,
-                            perfettoMessage = null,
-                            perfettoDegradedFromVitalsPreset = perfettoOutcome.degraded,
-                        )
+                        is PerfettoOutcome.Ok -> {
+                            val base =
+                                report.copy(
+                                    perfettoTraceFile = perfettoOutcome.file,
+                                    perfettoMessage = null,
+                                    perfettoDegradedFromVitalsPreset = perfettoOutcome.degraded,
+                                )
+                            if (shouldAutoAnalyzePerfetto(mergedEngines, scenarioConfig)) {
+                                base.copy(perfettoAnalyze = runPerfettoAutoAnalyze(perfettoOutcome.file, packageName))
+                            } else {
+                                base
+                            }
+                        }
 
                         is PerfettoOutcome.Skipped -> report.copy(perfettoMessage = perfettoOutcome.reason)
                         null -> report
@@ -589,6 +607,35 @@ class RunCommand : CliktCommand(
         echo("Install the SDK with:  perf sdk install", err = true)
         echo("Then run:               perf init   (optional if install saved config)", err = true)
         throw ProgramResult(1)
+    }
+
+    private fun shouldAutoAnalyzePerfetto(
+        engines: dev.perf.cli.scenario.EngineConfig,
+        scenarioConfig: ScenarioConfig?,
+    ): Boolean = engines.perfettoAutoAnalyze || (scenarioConfig == null && autoAnalyzeFlag)
+
+    private fun runPerfettoAutoAnalyze(trace: File, packageName: String): TraceAnalysisSummary {
+        val service = TraceAnalyzeService()
+        val domains = listOf("rendering", "cpu")
+        val results = linkedMapOf<String, AnalyzeResult>()
+        var skipReason: String? = null
+        for (domain in domains) {
+            try {
+                results[domain] =
+                    service.analyze(trace, domain, AnalyzeOptions(packageName = packageName))
+            } catch (e: TraceAnalyzeException.TraceProcessorMissing) {
+                skipReason = e.message
+                break
+            } catch (e: TraceAnalyzeException) {
+                echo("→ Perfetto analyze ($domain): ${e.message}", err = true)
+            }
+        }
+        val version = results.values.firstOrNull()?.queryPackVersion ?: "v1"
+        return TraceAnalysisSummary(
+            queryPackVersion = version,
+            domains = results,
+            skipReason = skipReason,
+        )
     }
 
     private sealed class PerfettoOutcome {

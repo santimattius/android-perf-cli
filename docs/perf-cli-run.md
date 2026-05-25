@@ -55,7 +55,7 @@ Resolution logic lives in **`resolveRunParameters`** ([ScenarioResolution.kt](..
 - **`session`** — trace length aligns with the monitoring window (scaled to at least a few seconds).
 - **`startup`** — shorter capped trace geared toward startup analysis alongside cold-start measurement.
 
-Traces open in **[Perfetto UI](https://ui.perfetto.dev)**; the JVM does **not** parse protobuf.
+Traces open in **[Perfetto UI](https://ui.perfetto.dev)**; the JVM does **not** parse protobuf. For offline metrics use **`perf analyze`** and see **[perfetto-investigation.md](perfetto-investigation.md)**.
 
 ---
 

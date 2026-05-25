@@ -2,6 +2,7 @@ package dev.perf.cli
 
 import com.github.ajalt.clikt.core.subcommands
 import com.github.ajalt.clikt.parameters.options.versionOption
+import dev.perf.cli.command.AnalyzeCommand
 import dev.perf.cli.command.HistoryCommand
 import dev.perf.cli.command.InitCommand
 import dev.perf.cli.command.RunCommand
@@ -26,5 +27,12 @@ class PerfCli : com.github.ajalt.clikt.core.CliktCommand(
 
 fun main(args: Array<String>) =
     PerfCli()
-        .subcommands(InitCommand(), SdkCommand(), RunCommand(), HistoryCommand(), VersionCommand())
+        .subcommands(
+            InitCommand(),
+            SdkCommand(),
+            RunCommand(),
+            AnalyzeCommand(),
+            HistoryCommand(),
+            VersionCommand(),
+        )
         .main(args)

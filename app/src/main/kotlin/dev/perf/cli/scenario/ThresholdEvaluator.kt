@@ -5,6 +5,9 @@ import dev.perf.analysis.model.PermissionDenialReport
 import dev.perf.analysis.model.Severity
 import dev.perf.analysis.model.ThresholdBreach
 import dev.perf.analysis.model.WakelockReport
+import dev.perf.trace.model.TraceAnalysisSummary
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.longOrNull
 
 /**
  * Applies [ThresholdConfig] against a [PerfReport] and returns a list of
@@ -115,6 +118,8 @@ object ThresholdEvaluator {
                 evaluatePermissionDenials(pd, thresholds, this)
             }
 
+            evaluateTraceAnalysis(report.perfettoAnalyze, thresholds, this)
+
             val wl = report.wakelockReport ?: return@buildList
             val maxWakelockMs = thresholds.maxWakelockTimeMs
             if (maxWakelockMs != null && wl.totalDurationMs > maxWakelockMs) {
@@ -189,6 +194,27 @@ object ThresholdEvaluator {
             sink.add(
                 ThresholdBreach(
                     "Permission denials ${pd.denials.size} exceeds threshold of $max",
+                ),
+            )
+        }
+    }
+
+    private fun evaluateTraceAnalysis(
+        summary: TraceAnalysisSummary?,
+        thresholds: ThresholdConfig,
+        sink: MutableList<ThresholdBreach>,
+    ) {
+        if (summary == null) return
+        val limit = thresholds.maxMainThreadBlockedMs ?: return
+        val rendering = summary.domains["rendering"] ?: return
+        val blocked =
+            rendering.metrics["main_thread_blocked_ms"]?.let { el ->
+                (el as? JsonPrimitive)?.longOrNull
+            } ?: return
+        if (blocked > limit) {
+            sink.add(
+                ThresholdBreach(
+                    "Trace main thread blocked time ${blocked}ms exceeds threshold of ${limit}ms",
                 ),
             )
         }
