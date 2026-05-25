@@ -169,6 +169,44 @@ class StartupCaptureRaceTest {
     }
 
     @Test
+    fun `displayed only with quiet logcat completes without hang`() = runTest {
+        val io = StandardTestDispatcher(testScheduler)
+        val fake =
+            FakeAdbClient(
+                streamSessions = listOf(listOf(0L to displayedLine(400))),
+                holdStreamOpenAfterScript = true,
+                allowFailureHandler = ::shellOk,
+            )
+        val deferred =
+            async(io) {
+                StartupCapture(fake, io).capture(pkg, "$pkg/.MainActivity", baseConfig())
+            }
+        advanceTimeBy(15_000)
+        val report = deferred.await()
+        val s = assertNotNull(report.cold).samples.single()
+        assertEquals(400, s.ttidMs)
+        assertNull(s.ttfdMs)
+        assertEquals(StartupSource.LOGCAT_DISPLAYED, s.source)
+    }
+
+    @Test
+    fun `hold open stream teardown completes within bounded virtual time`() = runTest {
+        val io = StandardTestDispatcher(testScheduler)
+        val fake =
+            FakeAdbClient(
+                streamSessions = listOf(listOf(0L to displayedLine(300))),
+                holdStreamOpenAfterScript = true,
+                allowFailureHandler = ::shellOk,
+            )
+        val deferred =
+            async(io) {
+                StartupCapture(fake, io).capture(pkg, "$pkg/.MainActivity", baseConfig())
+            }
+        advanceTimeBy(20_000)
+        deferred.await()
+    }
+
+    @Test
     fun `displayed line after virtual delay still resolves ttid`() = runTest {
         val io = StandardTestDispatcher(testScheduler)
         val session =

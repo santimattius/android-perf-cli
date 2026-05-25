@@ -3,6 +3,7 @@ package dev.perf.analysis.fake
 import dev.perf.adb.AdbClient
 import dev.perf.adb.AdbShellResult
 import java.io.File
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 
 /**
@@ -22,6 +23,11 @@ class FakeAdbClient(
     private val streamLines: List<String> = emptyList(),
     private val allowFailureHandler: ((Array<out String>) -> AdbShellResult)? = null,
     private val streamSessions: List<List<Pair<Long, String>>> = emptyList(),
+    /**
+     * When true, after all scripted lines are delivered, [stream] suspends until the hosting
+     * coroutine is cancelled — simulates a blocking logcat read with no further output.
+     */
+    private val holdStreamOpenAfterScript: Boolean = false,
 ) : AdbClient {
 
     private val sessionQueue: ArrayDeque<List<Pair<Long, String>>> =
@@ -46,6 +52,9 @@ class FakeAdbClient(
         for ((delayMs, line) in script) {
             if (delayMs > 0) delay(delayMs)
             if (!onLine(line)) return
+        }
+        if (holdStreamOpenAfterScript) {
+            awaitCancellation()
         }
     }
 

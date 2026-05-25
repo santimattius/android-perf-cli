@@ -15,6 +15,7 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
@@ -83,6 +84,7 @@ class StartupCapture(
 
             val displayed = CompletableDeferred<TtidParse>()
             val fullyDrawn = CompletableDeferred<Int?>()
+            val stopStreaming = AtomicBoolean(false)
 
             val streamJob =
                 launch(ioDispatcher) {
@@ -111,6 +113,7 @@ class StartupCapture(
                                 }
                             }
                             when {
+                                stopStreaming.get() -> false
                                 !displayed.isCompleted -> true
                                 else -> !fullyDrawn.isCompleted
                             }
@@ -143,7 +146,10 @@ class StartupCapture(
                     null
                 }
 
-            streamJob.cancelAndJoin()
+            stopStreaming.set(true)
+            withTimeoutOrNull(STREAM_JOIN_TIMEOUT_MS) {
+                streamJob.cancelAndJoin()
+            }
 
             val (ttidMs, source, baseFlags) =
                 when {
@@ -236,6 +242,8 @@ class StartupCapture(
         }
 
     companion object {
+        private const val STREAM_JOIN_TIMEOUT_MS = 500L
+
         fun parseAmStartWOutput(output: String): ColdStartMeasurement = parseAmStartWOutputLegacy(output)
     }
 }
