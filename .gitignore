@@ -7,3 +7,7 @@ build/
 *.iml
 local.properties
 report.md
+report-*.md
+# Local Pi runtime state
+.atl/
+/.pi

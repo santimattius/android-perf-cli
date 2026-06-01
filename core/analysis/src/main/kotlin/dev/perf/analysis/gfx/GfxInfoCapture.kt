@@ -83,23 +83,39 @@ class GfxInfoCapture(private val device: AdbClient) {
     /**
      * Parses the PROFILEDATA section from framestats output.
      *
-     * Each row has 14 timestamp columns (nanoseconds). Render time is:
-     *   column[13] (FrameCompleted) - column[1] (IntendedVsync)
+     * The column layout changed in newer Android API levels (FrameTimelineVsyncId was
+     * inserted at position 1, shifting all subsequent columns). We parse the header row
+     * to find IntendedVsync and FrameCompleted by name instead of hardcoding indices.
+     *
+     * Rows with Flags != 0 are skipped — they represent partial/invalid frames whose
+     * timestamps are not comparable to regular frame timestamps.
      */
     private fun parseFrameTimesMs(raw: String): List<Double> {
-        val inSection = raw.lineSequence()
+        val lines = raw.lineSequence()
             .dropWhile { !it.startsWith("---PROFILEDATA---") }
-            .drop(2) // skip header and column names line
+            .drop(1) // skip the opening ---PROFILEDATA--- marker
             .takeWhile { it != "---PROFILEDATA---" && it.isNotBlank() }
+            .toList()
 
-        return inSection.mapNotNull { line ->
-            val cols = line.split(",").mapNotNull { it.trim().toLongOrNull() }
-            if (cols.size < 14) return@mapNotNull null
-            val intendedVsync = cols[1]
-            val frameCompleted = cols[13]
-            // Timestamps of 0 indicate missing/invalid frames
+        if (lines.isEmpty()) return emptyList()
+
+        val headers = lines.first().split(",").map { it.trim() }
+        val flagsIdx = headers.indexOf("Flags")
+        val vsyncIdx = headers.indexOf("IntendedVsync")
+        val completedIdx = headers.indexOf("FrameCompleted")
+
+        if (vsyncIdx < 0 || completedIdx < 0) return emptyList()
+
+        return lines.drop(1).mapNotNull { line ->
+            val cols = line.split(",").map { it.trim() }
+            val flags = if (flagsIdx >= 0) cols.getOrNull(flagsIdx)?.toLongOrNull() ?: 0L else 0L
+            if (flags != 0L) return@mapNotNull null // skip partial/invalid frames
+            val intendedVsync = cols.getOrNull(vsyncIdx)?.toLongOrNull() ?: return@mapNotNull null
+            val frameCompleted = cols.getOrNull(completedIdx)?.toLongOrNull() ?: return@mapNotNull null
             if (intendedVsync == 0L || frameCompleted == 0L) return@mapNotNull null
-            (frameCompleted - intendedVsync) / 1_000_000.0
+            val durationMs = (frameCompleted - intendedVsync) / 1_000_000.0
+            if (durationMs <= 0) return@mapNotNull null // guard against negative/garbage values
+            durationMs
         }.toList()
     }
 

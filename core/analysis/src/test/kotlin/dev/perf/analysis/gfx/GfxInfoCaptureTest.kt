@@ -15,13 +15,10 @@ import kotlin.test.assertTrue
  * (severity, frame counts, percentiles), not the parsing implementation.
  * If the parser is ever rewritten, these tests remain valid.
  *
- * Fixture format (dumpsys gfxinfo <pkg> framestats):
- *   Column layout (14 cols, nanoseconds):
- *   [0] Flags  [1] IntendedVsync  [2..12] intermediate timestamps  [13] FrameCompleted
- *
- *   Frame render time = cols[13] - cols[1]
- *   Janky  = render time > 16ms  (16_000_000 ns)
- *   Frozen = render time > 700ms (700_000_000 ns)
+ * Two fixture formats are exercised:
+ *  - Old (pre-API31): 14 columns, IntendedVsync at col[1], FrameCompleted at col[13]
+ *  - New (API31+): 24 columns, FrameTimelineVsyncId at col[1] shifts IntendedVsync to
+ *    col[2] and FrameCompleted to col[17]. Parser resolves indices by column name.
  */
 class GfxInfoCaptureTest {
 
@@ -102,6 +99,41 @@ class GfxInfoCaptureTest {
         val incident = capture(fixture)
 
         assertEquals(1, incident.totalFrames)
+    }
+
+    @Test
+    fun `skips rows where Flags is non-zero`() = runTest {
+        // Flags != 0 marks partial or invalid frames — timestamps are unreliable
+        val validFrame = frameRow(baseVsync = 1_000_000_000L, durationMs = 10.0)
+        val partialFrame = frameRow(baseVsync = 1_016_000_000L, durationMs = 10.0)
+            .replaceFirst("0,", "1,") // set Flags = 1
+        val fixture = profileDataSection(listOf(validFrame, partialFrame))
+
+        val incident = capture(fixture)
+
+        assertEquals(1, incident.totalFrames)
+    }
+
+    @Test
+    fun `parses new extended column format with FrameTimelineVsyncId`() = runTest {
+        // API 31+ adds FrameTimelineVsyncId at col[1], shifting IntendedVsync to col[2]
+        // and FrameCompleted to col[17]. Parser must find columns by name, not index.
+        val fixture = newFormatGfxFixture(frames = List(10) { 10.0 } + List(2) { 20.0 })
+
+        val incident = capture(fixture)
+
+        assertEquals(12, incident.totalFrames)
+        assertEquals(2, incident.jankyFrames)
+    }
+
+    @Test
+    fun `returns zero frames when PROFILEDATA header lacks expected columns`() = runTest {
+        val fixture = "---PROFILEDATA---\nUnknownCol1,UnknownCol2\n1,2\n---PROFILEDATA---"
+
+        val incident = capture(fixture)
+
+        assertEquals(0, incident.totalFrames)
+        assertEquals(Severity.INFO, incident.severity)
     }
 
     // ── Percentile calculation ────────────────────────────────────────────────
@@ -226,10 +258,30 @@ class GfxInfoCaptureTest {
     }
 
     /**
-     * Generates a single PROFILEDATA row.
-     * Only [0] Flags, [1] IntendedVsync, and [13] FrameCompleted are populated —
-     * the parser only reads those three columns.
+     * Builds a framestats fixture using the extended column format introduced in API 31+,
+     * where FrameTimelineVsyncId is inserted at col[1], pushing IntendedVsync to col[2]
+     * and FrameCompleted to col[17].
      */
+    private fun newFormatGfxFixture(frames: List<Double>): String {
+        val rows = frames.mapIndexed { i, ms ->
+            val vsync = 362_000_000_000_000L + (i * 16_666_666L) // realistic absolute ns timestamps
+            val completed = vsync + (ms * 1_000_000).toLong()
+            val timelineId = 800000L + i
+            // Flags,FrameTimelineVsyncId,IntendedVsync,Vsync,InputEventId,HandleInputStart,
+            // AnimationStart,PerformTraversalsStart,DrawStart,FrameDeadline,FrameStartTime,
+            // FrameInterval,WorkloadTarget,SyncQueued,SyncStart,IssueDrawCommandsStart,
+            // SwapBuffers,FrameCompleted,...
+            "0,$timelineId,$vsync,$vsync,0,$vsync,$vsync,$vsync,$vsync,$vsync,$vsync,16666666,16666666,$vsync,$vsync,$vsync,$vsync,$completed,0,0,$completed,$completed,0,$vsync"
+        }
+        return buildString {
+            appendLine("---PROFILEDATA---")
+            appendLine("Flags,FrameTimelineVsyncId,IntendedVsync,Vsync,InputEventId,HandleInputStart,AnimationStart,PerformTraversalsStart,DrawStart,FrameDeadline,FrameStartTime,FrameInterval,WorkloadTarget,SyncQueued,SyncStart,IssueDrawCommandsStart,SwapBuffers,FrameCompleted,DequeueBufferDuration,QueueBufferDuration,GpuCompleted,SwapBuffersCompleted,DisplayPresentTime,CommandSubmissionCompleted,")
+            rows.forEach { appendLine(it) }
+            append("---PROFILEDATA---")
+        }
+    }
+
+    /** Generates a single PROFILEDATA row for the old (pre-API31) 14-column format. */
     private fun frameRow(baseVsync: Long, durationMs: Double): String {
         val completed = baseVsync + (durationMs * 1_000_000).toLong()
         return "0,$baseVsync,0,0,0,0,0,0,0,0,0,0,0,$completed"
