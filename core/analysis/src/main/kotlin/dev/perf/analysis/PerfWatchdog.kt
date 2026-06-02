@@ -30,6 +30,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Coordinates perf engines for a monitoring session.
@@ -131,7 +132,8 @@ class PerfWatchdog(
 
     suspend fun stop(analyzeHeap: Boolean = false): PerfReport {
         permissionDenialJob?.cancelAndJoin()
-        exitSignalJob?.cancelAndJoin()
+        exitSignalJob?.cancel()
+        withTimeoutOrNull(1_500) { exitSignalJob?.join() }
         logcatJob?.cancel()
         // Ensure baseline snapshots are captured before computing end-of-session deltas
         baselineJob?.join()

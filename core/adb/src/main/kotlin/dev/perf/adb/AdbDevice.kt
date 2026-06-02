@@ -1,7 +1,8 @@
 package dev.perf.adb
 
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.job
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -136,9 +137,20 @@ class AdbDevice(
                 .redirectErrorStream(true)
                 .start()
 
-            coroutineContext.job.invokeOnCompletion {
-                process.destroyForcibly()
-                runCatching { process.inputStream.close() }
+            // Child coroutine that destroys the process the moment this scope is cancelled.
+            // Required because JVM thread interrupt (used by runInterruptible) does not
+            // reliably unblock readLine() on ADB processes connected over the network on
+            // macOS. By destroying the process first, EOF propagates through the pipe and
+            // readLine() returns null, unblocking runInterruptible cleanly.
+            // The watcher is explicitly cancelled in the finally block so that normal
+            // completion (onLine returning false, or EOF) does not leave it suspended.
+            val watcherJob = launch {
+                try {
+                    awaitCancellation()
+                } finally {
+                    process.destroyForcibly()
+                    runCatching { process.inputStream.close() }
+                }
             }
 
             try {
@@ -151,6 +163,7 @@ class AdbDevice(
                     }
                 }
             } finally {
+                watcherJob.cancel()
                 process.destroyForcibly()
             }
         }

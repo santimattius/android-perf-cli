@@ -4,6 +4,7 @@ import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertTrue
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -38,6 +39,30 @@ class AdbDeviceStreamCancelTest {
                     withTimeout(2_000) { streamJob.join() }
                 }.isSuccess
             assertTrue(completed, "stream did not complete within 2s after cancellation")
+        }
+
+    @Test
+    fun `three concurrent streams in coroutineScope all cancel within bounded time`() =
+        runBlocking {
+            // Mirrors the ExitSignalCapture pattern: three streams inside coroutineScope.
+            // With invokeOnCompletion(onCancelling = false) the process is only destroyed
+            // after the job completes — but the job can't complete because readLine() blocks.
+            // With onCancelling = true, the process is destroyed as soon as cancellation
+            // starts, closing the InputStream and unblocking readLine() via EOF.
+            val device = AdbDevice(serial = "test-device", adbPath = fakeBlockingAdbPath())
+            val captureJob = launch {
+                coroutineScope {
+                    launch { device.stream("logcat", "-b", "events", "-s", "am_anr") { true } }
+                    launch { device.stream("logcat", "-b", "crash") { true } }
+                    launch { device.stream("logcat", "-s", "lmkd") { true } }
+                }
+            }
+            delay(50)
+            captureJob.cancel()
+            val completed = kotlin.runCatching {
+                withTimeout(2_000) { captureJob.join() }
+            }.isSuccess
+            assertTrue(completed, "Three concurrent streams did not cancel within 2s")
         }
 
     @Test
