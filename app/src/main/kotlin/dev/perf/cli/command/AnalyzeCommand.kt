@@ -24,6 +24,7 @@ class AnalyzeCommand : CliktCommand(
     invokeWithoutSubcommand = true,
 ) {
     override fun run() {
+        if (currentContext.invokedSubcommand != null) return
         echo("Usage: perf analyze <startup|rendering|memory|cpu> <trace.perfetto-trace> [options]")
         echo("See: docs/perfetto-investigation.md")
         throw ProgramResult(2)

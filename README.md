@@ -142,6 +142,12 @@ If thresholds are exceeded, the process exits with code **`1`**.
 
 ---
 
+## Agent / CI Usage
+
+Using `perf` from an AI agent or CI loop? See [docs/SKILL.md](docs/SKILL.md) — the agent-facing skill doc: command map, exit-code contract, and the `analyze --output json` schema.
+
+---
+
 ## Installation (binary & packaging)
 
 - **From source:** [INSTALL.md](INSTALL.md) (`perf` alias, `scripts/install-perf.sh`,
