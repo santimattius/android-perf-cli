@@ -1,0 +1,9 @@
+{
+  "resources": {
+    "includes": [
+      { "pattern": "\\Qquery-packs/v1/manifest.json\\E" },
+      { "pattern": "query-packs/v1/.*\\.sql$" }
+    ]
+  },
+  "bundles": []
+}

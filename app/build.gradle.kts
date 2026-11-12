@@ -53,6 +53,30 @@ graalvmNative {
             imageName.set("perf")
             mainClass.set("dev.perf.cli.MainKt")
             buildArgs.add("--no-fallback")
+            // Discovered during the PR1 native-image resource reachability spike
+            // (sdd/android-agent-guardian): without this flag, `:app:nativeCompile` fails
+            // hard with "kotlin.DeprecationLevel was unintentionally initialized during
+            // image building". Root cause, confirmed via
+            // `--trace-class-initialization=kotlin.DeprecationLevel`:
+            //   com.oracle.svm.hosted.heap.PodFeature.isPodClass()
+            //     -> java.lang.Class.isAnnotationPresent()
+            //     -> Class.createAnnotationData() / AnnotationParser.parseAnnotations()
+            //     -> AnnotationType.<init>() resolving a DEFAULT annotation member value
+            //     -> Method.getDefaultValue() -> parseEnumValue() -> Enum.valueOf()
+            //     -> Class.getEnumConstantsShared() (class-initializes the enum)
+            // native-image's points-to analysis registers image-heap types via
+            // `SVMHost.createHub()` -> `computeHubType()` -> `PodFeature.isPodClass()`,
+            // which calls `Class.isAnnotationPresent(...)` on every reachable class. The
+            // JDK's AnnotationParser eagerly resolves ALL default annotation member values
+            // while doing so — including `kotlin.Deprecated`'s `level: DeprecationLevel =
+            // DeprecationLevel.WARNING` default. Any reachable class/method carrying Kotlin's
+            // compiler-generated `@Deprecated(level = ...)` annotation (ubiquitous across the
+            // Kotlin stdlib and this app's Kotlin dependencies — kotlinx-serialization, Clikt,
+            // kotlinx-coroutines, Mordant) triggers this, so it is NOT specific to guardian
+            // resources and will resurface on any Kotlin/GraalVM native-image build of
+            // comparable size. Forcing build-time init is safe: `DeprecationLevel` is a
+            // stateless enum with no build-time side effects.
+            buildArgs.add("--initialize-at-build-time=kotlin.DeprecationLevel")
         }
     }
 }
