@@ -209,38 +209,46 @@ perf history --package com.example.app --window 10
 
 ### perf guardian
 
-Install the Guardian agent skill and persona into a repository. Currently supports `install` for
-the `claude` target only.
+Install the Guardian agent skills and personas into a repository. Currently supports `install`
+for the `claude` and `codex` targets.
 
 **Synopsis**
 
 ```
-perf guardian install --target claude [--directory <repo>]
+perf guardian install --target <claude|codex> [--directory <repo>]
 ```
 
 **Key flags**
 
 | Flag | Type | Purpose |
 |------|------|---------|
-| `--target <claude>` | choice (required) | Coding agent to install for. Only `claude` is supported. |
+| `--target <claude\|codex>` | choice (required) | Coding agent to install for. One value per run. |
 | `--directory <path>` | dir path | Repository to install into. Must exist. Default: current directory. |
 
-Writes five skills to `.claude/skills/<id>/SKILL.md` (`android-performance`, `android-anr-triage`,
-`android-startup-budget`, `android-jank-review`, `android-memory-leak-review`), five personas to
-`.claude/agents/<id>.md` (`android-performance-guardian`, `anr-auditor`, `startup-auditor`,
-`jank-auditor`, `leak-auditor`) and the receipt `.guardian-manifest.json`. Installed and unchanged
-paths are listed on stdout.
+Installs five skills (`android-performance`, `android-anr-triage`, `android-startup-budget`,
+`android-jank-review`, `android-memory-leak-review`) and five personas (`android-performance-guardian`,
+`anr-auditor`, `startup-auditor`, `jank-auditor`, `leak-auditor`), plus the receipt
+`.guardian-manifest.json`. Installed and unchanged paths are listed on stdout.
+
+| Target | Skills | Personas | Other |
+|--------|--------|----------|-------|
+| `claude` | `.claude/skills/<id>/SKILL.md` | `.claude/agents/<id>.md` | |
+| `codex` | `.agents/skills/<id>/SKILL.md` | `.codex/agents/<id>.toml` | marked block in `AGENTS.md` |
+
+For `codex`, only the region between the `perf-guardian` begin and end markers in `AGENTS.md` is
+managed; the rest of the file is preserved. Installing a second target does not disturb the first.
 
 Exit behavior: `0` on success, including a repeat install with nothing to change. `1` when a
-destination file exists but is not owned by Guardian, or an owned file was modified since it was
-installed (nothing is written; the cause is on stderr), on a filesystem error, or on a usage error
-such as a missing or unsupported `--target` or a `--directory` that does not exist (Clikt usage
-errors exit `1` for this command, not `2`). There is no `--force`.
+destination file exists but is not owned by Guardian, an owned file or `AGENTS.md` region was
+modified since it was installed, the `AGENTS.md` markers are damaged (nothing is written; the cause
+is on stderr), on a filesystem error, or on a usage error such as a missing or unsupported
+`--target` or a `--directory` that does not exist (Clikt usage errors exit `1` for this command,
+not `2`). There is no `--force`.
 
 **Example**
 
 ```bash
-perf guardian install --target claude --directory ./my-app
+perf guardian install --target codex --directory ./my-app
 ```
 
 ---

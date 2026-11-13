@@ -26,7 +26,7 @@ private val itemIdPattern = Regex("[a-z0-9][a-z0-9-]*")
 @Serializable
 data class GuardianInstallReceipt(
     val guardianVersion: String,
-    val target: String,
+    val targets: List<String>,
     val items: List<GuardianInstalledItem>,
 ) {
     companion object {
@@ -41,10 +41,14 @@ data class GuardianInstallReceipt(
     fun bytes(): ByteArray = receiptJson.encodeToString(serializer(), this).encodeToByteArray()
 }
 
-/** One managed artifact and its installed-content checksum. */
+/**
+ * One managed artifact and its installed-content checksum. For a doc snippet the checksum covers
+ * only the marked region, never the rest of the user's file.
+ */
 @Serializable
 data class GuardianInstalledItem(
     val kind: String,
+    val target: String,
     val id: String,
     val version: String,
     val path: String,
@@ -64,7 +68,7 @@ class GuardianInstallException(
 ) : IllegalStateException(message, cause)
 
 /**
- * Installs the Claude artifacts represented by an embedded [GuardianManifest].
+ * Installs the artifacts of one [CliTarget] represented by an embedded [GuardianManifest].
  *
  * All catalog and collision validation, including payload staging, completes before any destination
  * file is changed. Publication errors attempt to restore already-published files and never publish a
@@ -79,36 +83,39 @@ class GuardianInstaller(
         catalog: GuardianManifest = GuardianAssets.loadCatalog(),
     ): GuardianInstallResult {
         val root = validateRepository(repository)
-        val plan = createPlan(root, target, catalog)
+        val cliTarget = CliTarget.byId(target) ?: throw GuardianInstallException("Unsupported Guardian target: $target")
+        val plan = createPlan(root, cliTarget, catalog)
         val receiptPath = root.resolve(receiptFileName)
         val existingReceipt = readExistingReceipt(receiptPath)
 
         validateNoSymlinkAncestors(root, receiptPath)
         plan.forEach { validateNoSymlinkAncestors(root, it.destination) }
-        validateCollisions(plan, existingReceipt)
+        validateCollisions(plan.filter { it.region == null }, existingReceipt)
 
-        val staged = stagePayloads(root, plan)
+        val staged = stagePayloads(root, plan, existingReceipt)
         val desiredReceipt =
             GuardianInstallReceipt(
                 guardianVersion = catalog.guardianVersion,
-                target = target,
+                targets = ((existingReceipt?.targets ?: emptyList()) + cliTarget.id).distinct().sorted(),
                 items =
-                    plan.map { item ->
-                        GuardianInstalledItem(
-                            kind = item.kind,
-                            id = item.id,
-                            version = item.version,
-                            path = item.relativePath,
-                            sha256 = sha256(staged.files.getValue(item).content),
-                        )
-                    },
+                    (existingReceipt?.items?.filter { it.target != cliTarget.id } ?: emptyList()) +
+                        plan.map { item ->
+                            GuardianInstalledItem(
+                                kind = item.kind,
+                                target = item.target,
+                                id = item.id,
+                                version = item.version,
+                                path = item.relativePath,
+                                sha256 = staged.files.getValue(item).ownedSha,
+                            )
+                        },
             )
         val desiredReceiptBytes = desiredReceipt.bytes()
         val existingReceiptBytes = if (Files.exists(receiptPath, NOFOLLOW_LINKS)) Files.readAllBytes(receiptPath) else null
         val writes =
             plan.filter { item ->
                 !Files.exists(item.destination, NOFOLLOW_LINKS) ||
-                    sha256(Files.readAllBytes(item.destination)) != sha256(staged.files.getValue(item).content)
+                    !Files.readAllBytes(item.destination).contentEquals(staged.files.getValue(item).content)
             }
 
         if (writes.isEmpty() && existingReceiptBytes?.contentEquals(desiredReceiptBytes) == true) {
@@ -121,7 +128,7 @@ class GuardianInstaller(
         try {
             writes.forEach { item ->
                 validateNoSymlinkAncestors(root, item.destination)
-                item.destination.parent.createDirectoriesSafely(root)
+                if (item.destination.parent != root) item.destination.parent.createDirectoriesSafely(root)
                 val stagedFile = staged.files.getValue(item)
                 published += publish(stagedFile.path, item.destination, staged.directory)
             }
@@ -158,10 +165,9 @@ class GuardianInstaller(
 
     private fun createPlan(
         root: Path,
-        target: String,
+        target: CliTarget,
         catalog: GuardianManifest,
     ): List<PlanItem> {
-        if (target != "claude") throw GuardianInstallException("Unsupported Guardian target: $target")
         if (catalog.guardianVersion.isBlank()) throw GuardianInstallException("Guardian catalog version is required")
 
         val skillsById = catalog.skills.associateBy { it.id }
@@ -171,47 +177,64 @@ class GuardianInstaller(
             validateResource(skill.resource)
             if (skill.version.isBlank()) throw GuardianInstallException("Guardian skill version is required: ${skill.id}")
             if (skill.extraResources.isNotEmpty()) {
-                throw GuardianInstallException("Guardian skill extra resources are not supported by the Claude installer: ${skill.id}")
+                throw GuardianInstallException("Guardian skill extra resources are not supported by the installer: ${skill.id}")
             }
         }
 
-        val targetPersonas = catalog.personas.filter { target in it.artifacts }
+        val targetPersonas = catalog.personas.filter { target.id in it.artifacts }
         targetPersonas.forEach { persona ->
             validateItemId(persona.id, "persona")
-            validateResource(persona.artifacts.getValue(target))
+            validateResource(persona.artifacts.getValue(target.id))
             if (persona.version.isBlank()) throw GuardianInstallException("Guardian persona version is required: ${persona.id}")
             persona.requiresSkills.forEach { skillId ->
-                if (skillId !in
-                    skillsById
-                ) {
+                if (skillId !in skillsById) {
                     throw GuardianInstallException("Guardian persona ${persona.id} requires missing skill: $skillId")
                 }
+            }
+        }
+
+        val targetSnippets = catalog.docSnippets.filter { it.target == target.id }
+        targetSnippets.forEach { snippet ->
+            validateItemId(snippet.id, "doc snippet")
+            validateResource(snippet.resource)
+            validateResource(snippet.path)
+            if (snippet.version.isBlank()) throw GuardianInstallException("Guardian doc snippet version is required: ${snippet.id}")
+            if (snippet.markerBegin.isBlank() || snippet.markerEnd.isBlank() || snippet.markerBegin == snippet.markerEnd) {
+                throw GuardianInstallException("Guardian doc snippet needs distinct begin and end markers: ${snippet.id}")
             }
         }
 
         val plan =
             buildList {
                 catalog.skills.forEach { skill ->
+                    val relative = target.skillPath(skill.id)
+                    add(PlanItem("skill", target.id, skill.id, skill.version, skill.resource, relative, resolveRelative(root, relative)))
+                }
+                targetPersonas.forEach { persona ->
+                    val relative = target.personaPath(persona.id)
                     add(
                         PlanItem(
-                            kind = "skill",
-                            id = skill.id,
-                            version = skill.version,
-                            resource = skill.resource,
-                            relativePath = ".claude/skills/${skill.id}/SKILL.md",
-                            destination = resolveRelative(root, ".claude/skills/${skill.id}/SKILL.md"),
+                            "persona",
+                            target.id,
+                            persona.id,
+                            persona.version,
+                            persona.artifacts.getValue(target.id),
+                            relative,
+                            resolveRelative(root, relative),
                         ),
                     )
                 }
-                targetPersonas.forEach { persona ->
+                targetSnippets.forEach { snippet ->
                     add(
                         PlanItem(
-                            kind = "persona",
-                            id = persona.id,
-                            version = persona.version,
-                            resource = persona.artifacts.getValue(target),
-                            relativePath = ".claude/agents/${persona.id}.md",
-                            destination = resolveRelative(root, ".claude/agents/${persona.id}.md"),
+                            "docSnippet",
+                            target.id,
+                            snippet.id,
+                            snippet.version,
+                            snippet.resource,
+                            snippet.path,
+                            resolveRelative(root, snippet.path),
+                            DocRegion(snippet.markerBegin, snippet.markerEnd),
                         ),
                     )
                 }
@@ -251,6 +274,7 @@ class GuardianInstaller(
     private fun stagePayloads(
         root: Path,
         plan: List<PlanItem>,
+        receipt: GuardianInstallReceipt?,
     ): StagedPayloads {
         val directory =
             try {
@@ -261,21 +285,83 @@ class GuardianInstaller(
         try {
             val files =
                 plan.associateWith { item ->
-                    val content =
+                    val payload =
                         try {
                             payloadReader(item.resource).copyOf()
                         } catch (error: Exception) {
                             throw GuardianInstallException("Could not read Guardian payload: ${item.resource}", error)
                         }
+                    val region = item.region
+                    val content: ByteArray
+                    val ownedSha: String
+                    if (region == null) {
+                        content = payload
+                        ownedSha = sha256(payload)
+                    } else {
+                        val regionText = payload.decodeToString().trim()
+                        if (!regionText.startsWith(region.markerBegin) || !regionText.endsWith(region.markerEnd)) {
+                            throw GuardianInstallException("Guardian doc snippet must start and end with its markers: ${item.id}")
+                        }
+                        content = composeRegion(item, region, regionText, receipt)
+                        ownedSha = sha256(regionText.encodeToByteArray())
+                    }
                     val staged = directory.resolve("payload-${filesafe(item.relativePath)}")
                     Files.write(staged, content, CREATE_NEW)
-                    StagedFile(staged, content)
+                    StagedFile(staged, content, ownedSha)
                 }
             return StagedPayloads(directory, files)
         } catch (error: Exception) {
             deleteTree(directory)
             throw if (error is GuardianInstallException) error else GuardianInstallException("Could not stage Guardian payloads", error)
         }
+    }
+
+    /**
+     * Computes the full destination file for a marker-delimited doc snippet. Bytes outside the
+     * markers are never changed. A region Guardian did not install, a region the user edited, or
+     * mangled markers abort the installation.
+     */
+    private fun composeRegion(
+        item: PlanItem,
+        region: DocRegion,
+        regionText: String,
+        receipt: GuardianInstallReceipt?,
+    ): ByteArray {
+        val destination = item.destination
+        if (!Files.exists(destination, NOFOLLOW_LINKS)) return "$regionText\n".encodeToByteArray()
+        if (!Files.isRegularFile(destination, NOFOLLOW_LINKS) || Files.isSymbolicLink(destination)) {
+            throw GuardianInstallException("Guardian destination is not a regular file: ${item.relativePath}")
+        }
+        val existing = Files.readString(destination)
+        val begin = existing.indexOf(region.markerBegin)
+        val end = existing.indexOf(region.markerEnd)
+        if (begin == -1 && end == -1) {
+            val separator =
+                when {
+                    existing.isEmpty() -> ""
+                    existing.endsWith("\n") -> "\n"
+                    else -> "\n\n"
+                }
+            return (existing + separator + regionText + "\n").encodeToByteArray()
+        }
+        val malformed =
+            begin == -1 || end == -1 || end < begin ||
+                existing.indexOf(region.markerBegin, begin + 1) != -1 ||
+                existing.indexOf(region.markerEnd, end + 1) != -1
+        if (malformed) {
+            throw GuardianInstallException("Guardian markers in ${item.relativePath} are malformed; fix or remove them first")
+        }
+        val endExclusive = end + region.markerEnd.length
+        val currentSha = sha256(existing.substring(begin, endExclusive).encodeToByteArray())
+        val owned = receipt?.items?.singleOrNull { it.path == item.relativePath && it.target == item.target }
+        if (owned == null) {
+            throw GuardianInstallException("Refusing to overwrite unowned Guardian region: ${item.relativePath}")
+        }
+        if (owned.sha256 != currentSha) {
+            throw GuardianInstallException("Managed Guardian region was modified: ${item.relativePath}")
+        }
+        if (currentSha == sha256(regionText.encodeToByteArray())) return existing.encodeToByteArray()
+        return (existing.substring(0, begin) + regionText + existing.substring(endExclusive)).encodeToByteArray()
     }
 
     private fun publish(
@@ -363,13 +449,20 @@ class GuardianInstaller(
         }
     }
 
+    private data class DocRegion(
+        val markerBegin: String,
+        val markerEnd: String,
+    )
+
     private data class PlanItem(
         val kind: String,
+        val target: String,
         val id: String,
         val version: String,
         val resource: String,
         val relativePath: String,
         val destination: Path,
+        val region: DocRegion? = null,
     )
 
     private data class StagedPayloads(
@@ -377,9 +470,10 @@ class GuardianInstaller(
         val files: Map<PlanItem, StagedFile>,
     )
 
-    private data class StagedFile(
+    private class StagedFile(
         val path: Path,
         val content: ByteArray,
+        val ownedSha: String,
     )
 
     private data class PublishedFile(

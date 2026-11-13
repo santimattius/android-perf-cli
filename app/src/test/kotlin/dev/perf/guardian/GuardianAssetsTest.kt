@@ -48,7 +48,7 @@ class GuardianAssetsTest {
             ),
             catalog.personas.map { it.id },
         )
-        assertEquals(emptyList(), catalog.docSnippets, "doc snippets arrive with the Codex target")
+        assertEquals(listOf("codex-agents-md"), catalog.docSnippets.map { it.id })
     }
 
     // ── catalogResourcePaths() derives paths from catalog entries ────────────
@@ -64,10 +64,16 @@ class GuardianAssetsTest {
                 "/guardian/v1/skills/android-jank-review/SKILL.md",
                 "/guardian/v1/skills/android-memory-leak-review/SKILL.md",
                 "/guardian/v1/personas/claude/android-performance-guardian.md",
+                "/guardian/v1/personas/codex/android-performance-guardian.toml",
                 "/guardian/v1/personas/claude/anr-auditor.md",
+                "/guardian/v1/personas/codex/anr-auditor.toml",
                 "/guardian/v1/personas/claude/startup-auditor.md",
+                "/guardian/v1/personas/codex/startup-auditor.toml",
                 "/guardian/v1/personas/claude/jank-auditor.md",
+                "/guardian/v1/personas/codex/jank-auditor.toml",
                 "/guardian/v1/personas/claude/leak-auditor.md",
+                "/guardian/v1/personas/codex/leak-auditor.toml",
+                "/guardian/v1/snippets/codex-agents-md.md",
             ),
             GuardianAssets.catalogResourcePaths(),
         )

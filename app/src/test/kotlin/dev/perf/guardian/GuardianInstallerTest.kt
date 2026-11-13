@@ -55,11 +55,12 @@ class GuardianInstallerTest {
         val receipt = GuardianInstallReceipt.read(repository.resolve(".guardian-manifest.json"))
 
         assertEquals("v-test", receipt.guardianVersion)
-        assertEquals("claude", receipt.target)
+        assertEquals(listOf("claude"), receipt.targets)
         assertEquals(
             listOf(
                 GuardianInstalledItem(
                     kind = "skill",
+                    target = "claude",
                     id = "android-performance",
                     version = "1.2.3",
                     path = ".claude/skills/android-performance/SKILL.md",
@@ -67,6 +68,7 @@ class GuardianInstallerTest {
                 ),
                 GuardianInstalledItem(
                     kind = "persona",
+                    target = "claude",
                     id = "android-performance-guardian",
                     version = "4.5.6",
                     path = ".claude/agents/android-performance-guardian.md",

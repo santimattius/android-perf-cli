@@ -95,6 +95,46 @@ class GuardianCatalogContentTest {
     }
 
     @Test
+    fun `every persona ships a Codex TOML with the required fields`() {
+        catalog.personas.forEach { persona ->
+            val text = GuardianAssets.readResource(persona.artifacts.getValue("codex")).decodeToString()
+            assertTrue(Regex("(?m)^name = \"${persona.id}\"$").containsMatchIn(text), "${persona.id}: name")
+            assertTrue(Regex("(?m)^description = \".{20,}\"$").containsMatchIn(text), "${persona.id}: description")
+            assertTrue(Regex("(?m)^developer_instructions = \"\"\"$").containsMatchIn(text), "${persona.id}: developer_instructions")
+            assertEquals(0, Regex("\"\"\"").findAll(text).count() % 2, "${persona.id}: unbalanced triple quotes")
+            assertTrue(text.trimEnd().endsWith("\"\"\""), "${persona.id}: developer_instructions must close the file")
+            assertTrue(text.contains(".agents/skills/android-performance/SKILL.md"), "${persona.id}: must point at the general skill path")
+        }
+    }
+
+    @Test
+    fun `codex AGENTS md snippet is delimited by its catalog markers and names every codex persona`() {
+        val snippet = catalog.docSnippets.single()
+        val text = GuardianAssets.readResource(snippet.resource).decodeToString().trim()
+        assertTrue(text.startsWith(snippet.markerBegin))
+        assertTrue(text.endsWith(snippet.markerEnd))
+        assertEquals(1, Regex(Regex.escape(snippet.markerBegin)).findAll(text).count())
+        catalog.personas.forEach { persona -> assertTrue(text.contains("`${persona.id}`"), "snippet must name ${persona.id}") }
+        assertTrue(text.toByteArray().size < 4_096, "snippet must stay small against Codex's AGENTS.md size cap")
+    }
+
+    @Test
+    fun `real catalog installs for codex and coexists with claude`() {
+        val repository = Files.createTempDirectory("guardian-real-codex")
+        try {
+            GuardianInstaller().install(repository, "claude")
+            val codex = GuardianInstaller().install(repository, "codex")
+            assertEquals(11, codex.installedPaths.size)
+            assertTrue(repository.resolve(".codex/agents/jank-auditor.toml").exists())
+            assertTrue(repository.resolve("AGENTS.md").readText().contains("jank-auditor"))
+            assertTrue(GuardianInstaller().install(repository, "claude").installedPaths.isEmpty())
+            assertTrue(GuardianInstaller().install(repository, "codex").installedPaths.isEmpty())
+        } finally {
+            repository.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
     fun `real catalog installs into a clean repository and reinstalls unchanged`() {
         val repository = Files.createTempDirectory("guardian-real-catalog")
         try {

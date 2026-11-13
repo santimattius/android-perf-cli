@@ -104,25 +104,34 @@ Output defaults to **`report.md`**; use **`-o`**. Artefacts (screenshots, copied
 
 ### Guardian: agent skill and persona
 
-`perf guardian install --target claude [--directory <repo>]` writes agent skills and personas into
-a repository so a coding agent can run `perf` and interpret its output.
+`perf guardian install --target <claude|codex> [--directory <repo>]` writes agent skills and
+personas into a repository so a coding agent can run `perf` and interpret its output.
 
-| Skill (`.claude/skills/<id>/SKILL.md`) | Persona (`.claude/agents/<id>.md`) | Focus |
-|----------------------------------------|------------------------------------|-------|
+| Skill | Persona | Focus |
+|-------|---------|-------|
 | `android-performance` | `android-performance-guardian` | General: startup, rendering, memory, CPU. |
 | `android-anr-triage` | `anr-auditor` | ANRs and main-thread stalls. |
 | `android-startup-budget` | `startup-auditor` | Startup time against a budget. |
 | `android-jank-review` | `jank-auditor` | UI jank and dropped frames. |
 | `android-memory-leak-review` | `leak-auditor` | Memory growth, leaks, low-memory kills. |
 
-Guardian also writes `.guardian-manifest.json`, a receipt of what it owns with content hashes.
+| Target | Skills | Personas | Other |
+|--------|--------|----------|-------|
+| `claude` | `.claude/skills/<id>/SKILL.md` | `.claude/agents/<id>.md` | |
+| `codex` | `.agents/skills/<id>/SKILL.md` | `.codex/agents/<id>.toml` | A marked block in `AGENTS.md` |
 
-- `--target` is required and only `claude` is supported. `--directory` defaults to the current
-  directory and must already exist.
+Guardian also writes `.guardian-manifest.json`, a receipt of what it owns with content hashes.
+Installing a second target keeps the first one's files owned.
+
+- `--target` is required and takes one value per run (`claude` or `codex`). `--directory` defaults
+  to the current directory and must already exist.
 - Installed and unchanged paths are printed on stdout. Errors go to stderr with exit code `1`.
 - Re-running is a no-op when nothing changed.
 - Guardian never overwrites a file it does not own or one you edited after installing: it aborts
   with exit `1` and changes nothing. There is no force or backup mode yet.
+- For Codex, Guardian only touches the region between its `<!-- perf-guardian:begin v1 -->` and
+  `<!-- perf-guardian:end -->` markers in `AGENTS.md`. Everything else in the file is preserved
+  byte for byte. If you edit inside the markers, or damage them, the install aborts.
 
 Notable **`perf run`** flags (see **`run --help`** and [INSTALL.md](INSTALL.md) for the full
 matrix):

@@ -88,10 +88,30 @@ class GuardianInstallCommandTest {
 
     @Test
     fun `unsupported target is rejected and writes nothing`() {
-        val result = command().test("install --target codex --directory $repository")
+        val result = command().test("install --target gemini --directory $repository")
 
         assertNotEquals(0, result.statusCode)
         assertFalse(repository.resolve(".guardian-manifest.json").exists())
+    }
+
+    @Test
+    fun `codex target installs Codex destinations and prints them`() {
+        val codexCatalog =
+            catalog().copy(
+                personas = catalog().personas.map { it.copy(artifacts = it.artifacts + ("codex" to "personas/codex/x.toml")) },
+            )
+        val result =
+            GuardianCommand(
+                GuardianInstallCommand(
+                    installer = GuardianInstaller(payloadReader = { "payload:$it".encodeToByteArray() }),
+                    catalog = { codexCatalog },
+                ),
+            ).test("install --target codex --directory $repository")
+
+        assertEquals(0, result.statusCode, result.stderr)
+        assertTrue(result.stdout.contains(".agents/skills/android-performance/SKILL.md"), result.stdout)
+        assertTrue(result.stdout.contains(".codex/agents/android-performance-guardian.toml"), result.stdout)
+        assertFalse(repository.resolve(".claude").exists())
     }
 
     @Test
