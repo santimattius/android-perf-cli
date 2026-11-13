@@ -104,15 +104,18 @@ Output defaults to **`report.md`**; use **`-o`**. Artefacts (screenshots, copied
 
 ### Guardian: agent skill and persona
 
-`perf guardian install --target claude [--directory <repo>]` writes an `android-performance` skill
-and an `android-performance-guardian` persona into a repository so a coding agent can run `perf`
-and interpret its output (startup, rendering, memory, CPU).
+`perf guardian install --target claude [--directory <repo>]` writes agent skills and personas into
+a repository so a coding agent can run `perf` and interpret its output.
 
-| Path | Content |
-|------|---------|
-| `.claude/skills/android-performance/SKILL.md` | Skill: commands, exit codes, reporting rules. |
-| `.claude/agents/android-performance-guardian.md` | Persona that uses the skill. |
-| `.guardian-manifest.json` | Receipt of what Guardian owns, with content hashes. |
+| Skill (`.claude/skills/<id>/SKILL.md`) | Persona (`.claude/agents/<id>.md`) | Focus |
+|----------------------------------------|------------------------------------|-------|
+| `android-performance` | `android-performance-guardian` | General: startup, rendering, memory, CPU. |
+| `android-anr-triage` | `anr-auditor` | ANRs and main-thread stalls. |
+| `android-startup-budget` | `startup-auditor` | Startup time against a budget. |
+| `android-jank-review` | `jank-auditor` | UI jank and dropped frames. |
+| `android-memory-leak-review` | `leak-auditor` | Memory growth, leaks, low-memory kills. |
+
+Guardian also writes `.guardian-manifest.json`, a receipt of what it owns with content hashes.
 
 - `--target` is required and only `claude` is supported. `--directory` defaults to the current
   directory and must already exist.

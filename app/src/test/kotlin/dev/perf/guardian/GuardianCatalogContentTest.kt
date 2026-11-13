@@ -57,11 +57,49 @@ class GuardianCatalogContentTest {
     }
 
     @Test
+    fun `every persona requires the general skill and its own specialized skill`() {
+        val specialized = mapOf(
+            "anr-auditor" to "android-anr-triage",
+            "startup-auditor" to "android-startup-budget",
+            "jank-auditor" to "android-jank-review",
+            "leak-auditor" to "android-memory-leak-review",
+        )
+        specialized.forEach { (personaId, skillId) ->
+            val persona = catalog.personas.single { it.id == personaId }
+            assertEquals(listOf("android-performance", skillId), persona.requiresSkills, personaId)
+        }
+    }
+
+    @Test
+    fun `specialized skills only reference perf commands that exist`() {
+        val analyzeDomains = setOf("startup", "rendering", "memory", "cpu")
+        val invocation = Regex("perf analyze ([a-z]+)")
+        catalog.skills.forEach { skill ->
+            val text = GuardianAssets.readResource(skill.resource).decodeToString()
+            invocation.findAll(text).forEach { match ->
+                assertTrue(
+                    match.groupValues[1] in analyzeDomains,
+                    "${skill.id} references unknown analyze domain: ${match.value}",
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `each specialized skill points back to the general skill and states how to report`() {
+        catalog.skills.filter { it.id != "android-performance" }.forEach { skill ->
+            val text = GuardianAssets.readResource(skill.resource).decodeToString()
+            assertTrue(text.contains("android-performance"), "${skill.id} must reference the general skill")
+            assertTrue(text.contains("## How to report"), "${skill.id} must define a reporting format")
+        }
+    }
+
+    @Test
     fun `real catalog installs into a clean repository and reinstalls unchanged`() {
         val repository = Files.createTempDirectory("guardian-real-catalog")
         try {
             val first = GuardianInstaller().install(repository, "claude")
-            assertEquals(2, first.installedPaths.size)
+            assertEquals(10, first.installedPaths.size)
             assertTrue(repository.resolve(".claude/skills/android-performance/SKILL.md").exists())
             assertTrue(repository.resolve(".claude/agents/android-performance-guardian.md").readText().isNotBlank())
 

@@ -26,22 +26,48 @@ class GuardianAssetsTest {
     }
 
     @Test
-    fun `loadCatalog ships the PR2 general performance skill and persona`() {
+    fun `loadCatalog ships the general skill plus four specialized skills with matching personas`() {
         val catalog = GuardianAssets.loadCatalog()
-        assertEquals(listOf("android-performance"), catalog.skills.map { it.id })
-        assertEquals(listOf("android-performance-guardian"), catalog.personas.map { it.id })
+        assertEquals(
+            listOf(
+                "android-performance",
+                "android-anr-triage",
+                "android-startup-budget",
+                "android-jank-review",
+                "android-memory-leak-review",
+            ),
+            catalog.skills.map { it.id },
+        )
+        assertEquals(
+            listOf(
+                "android-performance-guardian",
+                "anr-auditor",
+                "startup-auditor",
+                "jank-auditor",
+                "leak-auditor",
+            ),
+            catalog.personas.map { it.id },
+        )
         assertEquals(emptyList(), catalog.docSnippets, "doc snippets arrive with the Codex target")
     }
 
     // ── catalogResourcePaths() derives paths from catalog entries ────────────
 
     @Test
-    fun `catalogResourcePaths lists the manifest then every PR2 payload`() {
+    fun `catalogResourcePaths lists the manifest then every skill and persona payload`() {
         assertEquals(
             listOf(
                 "/guardian/v1/manifest.json",
                 "/guardian/v1/skills/android-performance/SKILL.md",
+                "/guardian/v1/skills/android-anr-triage/SKILL.md",
+                "/guardian/v1/skills/android-startup-budget/SKILL.md",
+                "/guardian/v1/skills/android-jank-review/SKILL.md",
+                "/guardian/v1/skills/android-memory-leak-review/SKILL.md",
                 "/guardian/v1/personas/claude/android-performance-guardian.md",
+                "/guardian/v1/personas/claude/anr-auditor.md",
+                "/guardian/v1/personas/claude/startup-auditor.md",
+                "/guardian/v1/personas/claude/jank-auditor.md",
+                "/guardian/v1/personas/claude/leak-auditor.md",
             ),
             GuardianAssets.catalogResourcePaths(),
         )

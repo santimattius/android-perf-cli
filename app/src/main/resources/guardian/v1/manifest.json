@@ -6,6 +6,26 @@
       "id": "android-performance",
       "version": "1.0.0",
       "resource": "skills/android-performance/SKILL.md"
+    },
+    {
+      "id": "android-anr-triage",
+      "version": "1.0.0",
+      "resource": "skills/android-anr-triage/SKILL.md"
+    },
+    {
+      "id": "android-startup-budget",
+      "version": "1.0.0",
+      "resource": "skills/android-startup-budget/SKILL.md"
+    },
+    {
+      "id": "android-jank-review",
+      "version": "1.0.0",
+      "resource": "skills/android-jank-review/SKILL.md"
+    },
+    {
+      "id": "android-memory-leak-review",
+      "version": "1.0.0",
+      "resource": "skills/android-memory-leak-review/SKILL.md"
     }
   ],
   "personas": [
@@ -13,9 +33,59 @@
       "id": "android-performance-guardian",
       "version": "1.0.0",
       "domain": "all",
-      "requiresSkills": ["android-performance"],
+      "requiresSkills": [
+        "android-performance"
+      ],
       "artifacts": {
         "claude": "personas/claude/android-performance-guardian.md"
+      }
+    },
+    {
+      "id": "anr-auditor",
+      "version": "1.0.0",
+      "domain": "anr",
+      "requiresSkills": [
+        "android-performance",
+        "android-anr-triage"
+      ],
+      "artifacts": {
+        "claude": "personas/claude/anr-auditor.md"
+      }
+    },
+    {
+      "id": "startup-auditor",
+      "version": "1.0.0",
+      "domain": "startup",
+      "requiresSkills": [
+        "android-performance",
+        "android-startup-budget"
+      ],
+      "artifacts": {
+        "claude": "personas/claude/startup-auditor.md"
+      }
+    },
+    {
+      "id": "jank-auditor",
+      "version": "1.0.0",
+      "domain": "rendering",
+      "requiresSkills": [
+        "android-performance",
+        "android-jank-review"
+      ],
+      "artifacts": {
+        "claude": "personas/claude/jank-auditor.md"
+      }
+    },
+    {
+      "id": "leak-auditor",
+      "version": "1.0.0",
+      "domain": "memory",
+      "requiresSkills": [
+        "android-performance",
+        "android-memory-leak-review"
+      ],
+      "artifacts": {
+        "claude": "personas/claude/leak-auditor.md"
       }
     }
   ],
