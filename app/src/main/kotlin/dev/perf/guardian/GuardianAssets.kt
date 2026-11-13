@@ -1,5 +1,6 @@
 package dev.perf.guardian
 
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 
 /**
@@ -25,10 +26,11 @@ object GuardianAssets {
     internal const val MANIFEST_PATH = "/guardian/v1/manifest.json"
 
     fun loadCatalog(): GuardianManifest {
-        val text = GuardianAssets::class.java.getResourceAsStream(MANIFEST_PATH)?.use { stream ->
-            stream.bufferedReader().readText()
-        } ?: error("Missing guardian catalog manifest: $MANIFEST_PATH")
-        return json.decodeFromString(GuardianManifest.serializer(), text)
+        val text =
+            GuardianAssets::class.java.getResourceAsStream(MANIFEST_PATH)?.use { stream ->
+                stream.bufferedReader().readText()
+            } ?: error("Missing guardian catalog manifest: $MANIFEST_PATH")
+        return json.decodeFromString<GuardianManifest>(text)
     }
 
     /**
@@ -63,7 +65,13 @@ object GuardianAssets {
         return paths
     }
 
+    /** Reads a catalog-relative payload after the installer has validated its safe relative path. */
+    fun readResource(resource: String): ByteArray {
+        val path = "/guardian/v1/$resource"
+        return GuardianAssets::class.java.getResourceAsStream(path)?.use { it.readBytes() }
+            ?: error("Missing guardian payload resource: $path")
+    }
+
     /** Opens [path] as a classpath resource stream; returns whether it is reachable. */
-    fun resourceExists(path: String): Boolean =
-        GuardianAssets::class.java.getResourceAsStream(path) != null
+    fun resourceExists(path: String): Boolean = GuardianAssets::class.java.getResourceAsStream(path) != null
 }

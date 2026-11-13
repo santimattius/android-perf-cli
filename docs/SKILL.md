@@ -31,6 +31,7 @@ self-contained executable, no JVM required) and as a fat JAR invocable via
 | `perf run`       | Monitor a live app session; collect metrics; write a Markdown report.   | No (Markdown file only)         |
 | `perf analyze`   | Analyze an offline Perfetto trace via `trace_processor`.                | Yes — `--output json` on stdout |
 | `perf history`   | Show rolling history of past `perf run` sessions for a package.         | No                              |
+| `perf guardian`  | Install the Android performance skill and persona into a repository.    | No                              |
 | `perf version`   | Print the installed version string.                                     | No                              |
 
 ---
@@ -206,6 +207,41 @@ perf history --package com.example.app --window 10
 
 ---
 
+### perf guardian
+
+Install the Guardian agent skill and persona into a repository. Currently supports `install` for
+the `claude` target only.
+
+**Synopsis**
+
+```
+perf guardian install --target claude [--directory <repo>]
+```
+
+**Key flags**
+
+| Flag | Type | Purpose |
+|------|------|---------|
+| `--target <claude>` | choice (required) | Coding agent to install for. Only `claude` is supported. |
+| `--directory <path>` | dir path | Repository to install into. Must exist. Default: current directory. |
+
+Writes `.claude/skills/android-performance/SKILL.md`, `.claude/agents/android-performance-guardian.md`
+and the receipt `.guardian-manifest.json`. Installed and unchanged paths are listed on stdout.
+
+Exit behavior: `0` on success, including a repeat install with nothing to change. `1` when a
+destination file exists but is not owned by Guardian, or an owned file was modified since it was
+installed (nothing is written; the cause is on stderr), on a filesystem error, or on a usage error
+such as a missing or unsupported `--target` or a `--directory` that does not exist (Clikt usage
+errors exit `1` for this command, not `2`). There is no `--force`.
+
+**Example**
+
+```bash
+perf guardian install --target claude --directory ./my-app
+```
+
+---
+
 ### perf version
 
 Print the installed version string. No flags.
@@ -235,6 +271,7 @@ perf version
 - `--min-score` gate failed (`perf run`).
 - Confirmed ANR, crash, or LMK event detected with `--exit-signals` active (`perf run`).
 - ADB device missing or ambiguous (no device connected, or multiple devices with no `--serial`).
+- `perf guardian install` collision: destination is unowned or was modified after install.
 
 **Output stream rules**
 

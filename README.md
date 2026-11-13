@@ -100,6 +100,26 @@ Output defaults to **`report.md`**; use **`-o`**. Artefacts (screenshots, copied
 | `perf init --install-sdk` | Install SDK CLI tools + **platform-tools** then save config.                      |
 | `perf sdk install`        | Same bootstrap, SDK-focused (`adb`).                                              |
 | `perf run`                | Monitor, collect metrics, write the report (see **`perf run --help`**).           |
+| `perf guardian install`   | Install the Android performance skill and agent persona into a repo (Claude).     |
+
+### Guardian: agent skill and persona
+
+`perf guardian install --target claude [--directory <repo>]` writes an `android-performance` skill
+and an `android-performance-guardian` persona into a repository so a coding agent can run `perf`
+and interpret its output (startup, rendering, memory, CPU).
+
+| Path | Content |
+|------|---------|
+| `.claude/skills/android-performance/SKILL.md` | Skill: commands, exit codes, reporting rules. |
+| `.claude/agents/android-performance-guardian.md` | Persona that uses the skill. |
+| `.guardian-manifest.json` | Receipt of what Guardian owns, with content hashes. |
+
+- `--target` is required and only `claude` is supported. `--directory` defaults to the current
+  directory and must already exist.
+- Installed and unchanged paths are printed on stdout. Errors go to stderr with exit code `1`.
+- Re-running is a no-op when nothing changed.
+- Guardian never overwrites a file it does not own or one you edited after installing: it aborts
+  with exit `1` and changes nothing. There is no force or backup mode yet.
 
 Notable **`perf run`** flags (see **`run --help`** and [INSTALL.md](INSTALL.md) for the full
 matrix):

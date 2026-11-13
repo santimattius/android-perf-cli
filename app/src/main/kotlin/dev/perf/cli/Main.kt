@@ -3,6 +3,7 @@ package dev.perf.cli
 import com.github.ajalt.clikt.core.subcommands
 import com.github.ajalt.clikt.parameters.options.versionOption
 import dev.perf.cli.command.AnalyzeCommand
+import dev.perf.cli.command.GuardianCommand
 import dev.perf.cli.command.HistoryCommand
 import dev.perf.cli.command.InitCommand
 import dev.perf.cli.command.RunCommand
@@ -33,6 +34,7 @@ fun main(args: Array<String>) =
             RunCommand(),
             AnalyzeCommand(),
             HistoryCommand(),
+            GuardianCommand(),
             VersionCommand(),
         )
         .main(args)
