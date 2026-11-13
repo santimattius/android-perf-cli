@@ -37,7 +37,8 @@
         "android-performance"
       ],
       "artifacts": {
-        "claude": "personas/claude/android-performance-guardian.md"
+        "claude": "personas/claude/android-performance-guardian.md",
+        "codex": "personas/codex/android-performance-guardian.toml"
       }
     },
     {
@@ -49,7 +50,8 @@
         "android-anr-triage"
       ],
       "artifacts": {
-        "claude": "personas/claude/anr-auditor.md"
+        "claude": "personas/claude/anr-auditor.md",
+        "codex": "personas/codex/anr-auditor.toml"
       }
     },
     {
@@ -61,7 +63,8 @@
         "android-startup-budget"
       ],
       "artifacts": {
-        "claude": "personas/claude/startup-auditor.md"
+        "claude": "personas/claude/startup-auditor.md",
+        "codex": "personas/codex/startup-auditor.toml"
       }
     },
     {
@@ -73,7 +76,8 @@
         "android-jank-review"
       ],
       "artifacts": {
-        "claude": "personas/claude/jank-auditor.md"
+        "claude": "personas/claude/jank-auditor.md",
+        "codex": "personas/codex/jank-auditor.toml"
       }
     },
     {
@@ -85,9 +89,20 @@
         "android-memory-leak-review"
       ],
       "artifacts": {
-        "claude": "personas/claude/leak-auditor.md"
+        "claude": "personas/claude/leak-auditor.md",
+        "codex": "personas/codex/leak-auditor.toml"
       }
     }
   ],
-  "docSnippets": []
+  "docSnippets": [
+    {
+      "id": "codex-agents-md",
+      "target": "codex",
+      "version": "1.0.0",
+      "path": "AGENTS.md",
+      "resource": "snippets/codex-agents-md.md",
+      "markerBegin": "<!-- perf-guardian:begin v1 -->",
+      "markerEnd": "<!-- perf-guardian:end -->"
+    }
+  ]
 }
