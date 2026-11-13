@@ -225,8 +225,11 @@ perf guardian install --target claude [--directory <repo>]
 | `--target <claude>` | choice (required) | Coding agent to install for. Only `claude` is supported. |
 | `--directory <path>` | dir path | Repository to install into. Must exist. Default: current directory. |
 
-Writes `.claude/skills/android-performance/SKILL.md`, `.claude/agents/android-performance-guardian.md`
-and the receipt `.guardian-manifest.json`. Installed and unchanged paths are listed on stdout.
+Writes five skills to `.claude/skills/<id>/SKILL.md` (`android-performance`, `android-anr-triage`,
+`android-startup-budget`, `android-jank-review`, `android-memory-leak-review`), five personas to
+`.claude/agents/<id>.md` (`android-performance-guardian`, `anr-auditor`, `startup-auditor`,
+`jank-auditor`, `leak-auditor`) and the receipt `.guardian-manifest.json`. Installed and unchanged
+paths are listed on stdout.
 
 Exit behavior: `0` on success, including a repeat install with nothing to change. `1` when a
 destination file exists but is not owned by Guardian, or an owned file was modified since it was
