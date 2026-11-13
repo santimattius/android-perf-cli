@@ -26,23 +26,32 @@ class GuardianAssetsTest {
     }
 
     @Test
-    fun `loadCatalog returns empty roster for PR1 spike`() {
+    fun `loadCatalog ships the PR2 general performance skill and persona`() {
         val catalog = GuardianAssets.loadCatalog()
-        assertEquals(emptyList(), catalog.skills, "PR1 ships an empty skills roster")
-        assertEquals(emptyList(), catalog.personas, "PR1 ships an empty personas roster")
-        assertEquals(emptyList(), catalog.docSnippets, "PR1 ships an empty docSnippets roster")
+        assertEquals(listOf("android-performance"), catalog.skills.map { it.id })
+        assertEquals(listOf("android-performance-guardian"), catalog.personas.map { it.id })
+        assertEquals(emptyList(), catalog.docSnippets, "doc snippets arrive with the Codex target")
     }
 
     // ── catalogResourcePaths() derives paths from catalog entries ────────────
 
     @Test
-    fun `catalogResourcePaths contains only the manifest itself for an empty roster`() {
-        val paths = GuardianAssets.catalogResourcePaths()
+    fun `catalogResourcePaths lists the manifest then every PR2 payload`() {
         assertEquals(
-            listOf("/guardian/v1/manifest.json"),
-            paths,
-            "with zero skills/personas/docSnippets, only the manifest path is derived",
+            listOf(
+                "/guardian/v1/manifest.json",
+                "/guardian/v1/skills/android-performance/SKILL.md",
+                "/guardian/v1/personas/claude/android-performance-guardian.md",
+            ),
+            GuardianAssets.catalogResourcePaths(),
         )
+    }
+
+    @Test
+    fun `every catalog resource path is reachable on the classpath`() {
+        GuardianAssets.catalogResourcePaths().forEach { path ->
+            assertTrue(GuardianAssets.resourceExists(path), "missing embedded resource: $path")
+        }
     }
 
     // ── resourceExists() proves classpath reachability without directory walking ─

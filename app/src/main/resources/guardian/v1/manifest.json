@@ -1,7 +1,23 @@
 {
   "guardianVersion": "v1",
   "verifiedAgainst": [],
-  "skills": [],
-  "personas": [],
+  "skills": [
+    {
+      "id": "android-performance",
+      "version": "1.0.0",
+      "resource": "skills/android-performance/SKILL.md"
+    }
+  ],
+  "personas": [
+    {
+      "id": "android-performance-guardian",
+      "version": "1.0.0",
+      "domain": "all",
+      "requiresSkills": ["android-performance"],
+      "artifacts": {
+        "claude": "personas/claude/android-performance-guardian.md"
+      }
+    }
+  ],
   "docSnippets": []
 }
