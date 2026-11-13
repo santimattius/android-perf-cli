@@ -19,3 +19,23 @@ jobs:
         run: ./gradlew test --no-daemon
       - name: Fat JAR
         run: ./gradlew :app:jar --no-daemon -q
+
+  # Native-image resource reachability spike (sdd/android-agent-guardian PR1, GI-7).
+  # Proves that classpath resources embedded under guardian/v1/ and query-packs/v1/
+  # are reachable via `getResourceAsStream` inside a `--no-fallback` native image —
+  # GraalVM native-image cannot enumerate a resource directory, so this is the only
+  # way to catch a resource-config.json pattern mismatch before it ships.
+  native-smoke:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: '17'
+          distribution: 'graalvm'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Native compile
+        run: ./gradlew :app:nativeCompile --no-daemon
+      - name: Verify embedded resources reachable in native image
+        run: ./app/build/native/nativeCompile/perf version --verify-resources

@@ -21,7 +21,14 @@ data class DomainSpec(
 object QueryPackLoader {
     private val json = Json { ignoreUnknownKeys = true }
 
-    private const val MANIFEST_PATH = "/query-packs/v1/manifest.json"
+    /**
+     * Source of truth for the query-pack manifest's classpath path — reused by
+     * `dev.perf.cli.command.VersionCommand` (`app` module) instead of a duplicated string
+     * literal (PR1 second review pass, finding #3). Must be `public`, not `internal`: the
+     * `app` module depends on `core:trace-analysis` as a separate Gradle compilation unit,
+     * and Kotlin's `internal` visibility does not cross module boundaries.
+     */
+    const val MANIFEST_PATH = "/query-packs/v1/manifest.json"
 
     fun loadV1(): QueryPackManifest {
         val text =

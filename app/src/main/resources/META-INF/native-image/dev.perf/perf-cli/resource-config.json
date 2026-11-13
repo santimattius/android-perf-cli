@@ -1,0 +1,11 @@
+{
+  "resources": {
+    "includes": [
+      { "pattern": "\\Qguardian/v1/manifest.json\\E" },
+      { "pattern": "guardian/v1/skills/.*/SKILL\\.md$" },
+      { "pattern": "guardian/v1/personas/(claude|codex)/.*\\.(md|toml)$" },
+      { "pattern": "guardian/v1/snippets/.*\\.md$" }
+    ]
+  },
+  "bundles": []
+}
