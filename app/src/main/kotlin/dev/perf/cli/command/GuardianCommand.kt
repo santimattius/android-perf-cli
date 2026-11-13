@@ -8,6 +8,7 @@ import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
 import com.github.ajalt.clikt.parameters.types.choice
 import com.github.ajalt.clikt.parameters.types.path
+import dev.perf.guardian.CliTarget
 import dev.perf.guardian.GuardianAssets
 import dev.perf.guardian.GuardianInstallException
 import dev.perf.guardian.GuardianInstaller
@@ -44,8 +45,8 @@ class GuardianInstallCommand(
     ) {
     private val target: String by option(
         "--target",
-        help = "Coding agent to install for. Only 'claude' is supported.",
-    ).choice("claude").required()
+        help = "Coding agent to install for: ${CliTarget.entries.joinToString(", ") { it.id }}.",
+    ).choice(*CliTarget.entries.map { it.id }.toTypedArray()).required()
 
     private val directory: Path by option(
         "--directory",
